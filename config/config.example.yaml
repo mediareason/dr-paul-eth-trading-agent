@@ -1,0 +1,122 @@
+# Dr. Paul's ETH Trading Agent Configuration
+
+# Exchange API Configuration
+exchanges:
+  binance:
+    api_key: "your_binance_api_key"  # Get from https://www.binance.com/en/my/settings/api-management
+    secret: "your_binance_secret"
+    testnet: false
+    rate_limit: 1200  # requests per minute
+  
+  coinbase:
+    api_key: "your_coinbase_api_key"  # Get from https://pro.coinbase.com/profile/api
+    secret: "your_coinbase_secret"
+    passphrase: "your_coinbase_passphrase"
+    sandbox: false
+    rate_limit: 10000  # requests per hour
+  
+  kraken:
+    api_key: "your_kraken_api_key"  # Get from https://www.kraken.com/u/security/api
+    secret: "your_kraken_secret"
+    rate_limit: 60  # requests per minute
+
+# On-Chain Data APIs
+onchain:
+  etherscan:
+    api_key: "your_etherscan_api_key"  # Get from https://etherscan.io/apis
+    rate_limit: 5  # requests per second
+  
+  coinmetrics:
+    api_key: "your_coinmetrics_api_key"  # Get from https://docs.coinmetrics.io/
+    rate_limit: 1000  # requests per month (free tier)
+  
+  messari:
+    api_key: "your_messari_api_key"  # Optional - some endpoints are free
+    rate_limit: 20  # requests per minute
+  
+  glassnode:
+    api_key: "your_glassnode_api_key"  # Optional - limited free data
+    rate_limit: 100  # requests per day (free tier)
+
+# Trading Configuration
+trading:
+  # Portfolio Settings
+  initial_balance: 10000  # Starting balance in USDT
+  max_position_size: 0.5  # Maximum 50% allocation to ETH
+  min_trade_size: 10      # Minimum trade size in USDT
+  
+  # Risk Management (Dr. Paul's principles)
+  risk_per_trade: 0.02    # Maximum 2% risk per trade
+  max_daily_trades: 5     # Limit overtrading
+  stop_loss_atr_multiple: 2.0  # Stop loss = 2x ATR
+  take_profit_ratio: 3.0  # 3:1 risk-reward minimum
+  
+  # Dr. Paul's Setup Requirements
+  min_setup_score: 0.6    # Minimum setup quality for entry
+  hard_trade_bonus: 0.2   # Bonus score for "hard trades"
+  
+  # Execution
+  paper_trading: true     # Start with paper trading
+  slippage_tolerance: 0.001  # 0.1% slippage tolerance
+  
+# Dr. Paul's Methodology Settings
+dr_paul:
+  # Process Focus (his core principle)
+  process_weight: 0.7     # 70% weight on process vs 30% on profits
+  
+  # Signal Detection
+  volatility_threshold: 0.3   # Price spread % for "hard trade" detection
+  whale_flow_threshold: -1000 # ETH net flow for accumulation signal
+  gas_efficiency_threshold: 20 # Low gas price threshold
+  
+  # Timeframes
+  long_term_trend_period: 200  # 200-period MA for long-term trend
+  short_term_pullback_period: 14  # RSI period for pullback detection
+  wyckoff_volume_period: 20   # Volume MA period for Wyckoff analysis
+
+# Data Storage
+database:
+  url: "sqlite:///data/trading_data.db"
+  echo: false  # Set to true for SQL debugging
+
+# API Server (for web dashboard)
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+  cors_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "logs/trading_agent.log"
+  max_size: "10MB"
+  backup_count: 5
+  
+# Alerts & Notifications
+notifications:
+  enabled: true
+  discord_webhook: "your_discord_webhook_url"  # Optional
+  telegram_bot_token: "your_telegram_bot_token"  # Optional
+  telegram_chat_id: "your_telegram_chat_id"     # Optional
+  
+  # Alert Conditions
+  alerts:
+    high_conviction_setup: true   # Alert on score > 0.8
+    large_whale_movement: true    # Alert on whale activity
+    system_errors: true          # Alert on system issues
+
+# Backtesting
+backtest:
+  default_start_date: "2023-01-01"
+  default_end_date: "2024-01-01"
+  commission: 0.001  # 0.1% trading fee
+  
+# Performance Tracking
+metrics:
+  benchmark: "ETH"  # Compare performance to buy-and-hold ETH
+  
+  # Dr. Paul's Process Metrics
+  track_process_metrics: true
+  track_setup_quality: true
+  track_execution_discipline: true
