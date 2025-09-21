@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, ComposedChart, Bar } from 'recharts';
+import { TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, AlertTriangle, Wifi, WifiOff, Target, Eye } from 'lucide-react';
 
 const DrPaulLiveDashboard = () => {
   const [mounted, setMounted] = useState(false);
@@ -32,31 +32,82 @@ const DrPaulLiveDashboard = () => {
     setupQuality: 'HIGH'
   });
 
-  const [onChainMetrics, setOnChainMetrics] = useState({
-    exchangeFlow: -18750,
-    whaleActivity: 0.89,
-    gasPrice: 15.2,
-    activeAddresses: 623145,
-    defiTvl: 160.5,
-    stakingRatio: 30.2,
-    exchangeBalance: 18.8
-  });
-
-  const [priceHistory, setPriceHistory] = useState([
-    { time: '06:00', price: 4445.12, volume: 45000 },
-    { time: '09:00', price: 4467.89, volume: 52000 },
-    { time: '12:00', price: 4491.23, volume: 48000 },
-    { time: '15:00', price: 4485.57, volume: 67000 },
-    { time: '18:00', price: 4502.34, volume: 71000 },
-    { time: '21:00', price: 4489.76, volume: 55000 }
+  // Enhanced chart data with Dr. Paul's strategic elements
+  const [strategicChartData, setStrategicChartData] = useState([
+    { 
+      time: '14:00', 
+      price: 4445.12, 
+      volume: 45000, 
+      setupScore: 0.65,
+      whaleActivity: 0.72,
+      riskReward: 2.8,
+      hardTradeSignal: 0.3
+    },
+    { 
+      time: '15:00', 
+      price: 4467.89, 
+      volume: 52000, 
+      setupScore: 0.71,
+      whaleActivity: 0.78,
+      riskReward: 3.1,
+      hardTradeSignal: 0.6
+    },
+    { 
+      time: '16:00', 
+      price: 4491.23, 
+      volume: 48000, 
+      setupScore: 0.68,
+      whaleActivity: 0.75,
+      riskReward: 2.9,
+      hardTradeSignal: 0.4
+    },
+    { 
+      time: '17:00', 
+      price: 4485.57, 
+      volume: 67000, 
+      setupScore: 0.78,
+      whaleActivity: 0.89,
+      riskReward: 3.4,
+      hardTradeSignal: 0.8
+    },
+    { 
+      time: '18:00', 
+      price: 4502.34, 
+      volume: 71000, 
+      setupScore: 0.73,
+      whaleActivity: 0.82,
+      riskReward: 3.0,
+      hardTradeSignal: 0.5
+    },
+    { 
+      time: '19:00', 
+      price: 4489.76, 
+      volume: 55000, 
+      setupScore: 0.75,
+      whaleActivity: 0.85,
+      riskReward: 3.2,
+      hardTradeSignal: 0.7
+    }
   ]);
 
-  // Fix hydration issues by only running on client
+  // Dr. Paul's strategic levels
+  const strategicLevels = {
+    majorSupport: 4400,
+    strongSupport: 4450,
+    currentLevel: 4485,
+    weakResistance: 4520,
+    majorResistance: 4600,
+    massStopLevel: 4480,
+    institutionalZone: [4470, 4510],
+    hardTradeZone: [4440, 4460]
+  };
+
+  // Fix hydration issues
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Real-time price fetching (client-side only)
+  // Real-time price fetching
   const fetchLiveETHPrice = async () => {
     if (!mounted) return;
     
@@ -65,9 +116,10 @@ const DrPaulLiveDashboard = () => {
       const data = await response.json();
       
       if (data && data.ethereum) {
+        const newPrice = data.ethereum.usd;
         setLiveData(prev => ({
           ...prev,
-          ethPrice: data.ethereum.usd,
+          ethPrice: newPrice,
           priceChange: data.ethereum.usd_24h_change || prev.priceChange,
           volume24h: data.ethereum.usd_24h_vol || prev.volume24h,
           isLive: true,
@@ -77,13 +129,27 @@ const DrPaulLiveDashboard = () => {
         // Update portfolio value
         setPortfolio(prev => ({
           ...prev,
-          totalValue: prev.usdtBalance + (prev.ethBalance * data.ethereum.usd),
-          unrealizedPnL: (prev.ethBalance * data.ethereum.usd) - (prev.ethBalance * 3500)
+          totalValue: prev.usdtBalance + (prev.ethBalance * newPrice),
+          unrealizedPnL: (prev.ethBalance * newPrice) - (prev.ethBalance * 3500)
         }));
+
+        // Update strategic chart with new price
+        setStrategicChartData(prev => {
+          const newTime = new Date().toTimeString().slice(0, 5);
+          const newEntry = {
+            time: newTime,
+            price: newPrice,
+            volume: 45000 + Math.random() * 30000,
+            setupScore: Math.max(0.5, Math.min(1.0, 0.75 + (Math.random() - 0.5) * 0.3)),
+            whaleActivity: Math.max(0.6, Math.min(1.0, 0.85 + (Math.random() - 0.5) * 0.2)),
+            riskReward: 2.5 + Math.random() * 1.5,
+            hardTradeSignal: Math.random()
+          };
+          return [...prev.slice(1), newEntry];
+        });
       }
     } catch (error) {
       console.log('Using demo data - API call failed');
-      // Use realistic simulation
       setLiveData(prev => ({
         ...prev,
         ethPrice: 4485.57 + (Math.random() - 0.5) * 20,
@@ -93,7 +159,28 @@ const DrPaulLiveDashboard = () => {
     }
   };
 
-  // Dr. Paul's market context analysis
+  // Dr. Paul's custom tooltip
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white p-4 border border-gray-300 rounded-lg shadow-lg">
+          <p className="font-semibold text-gray-800">{`Time: ${label}`}</p>
+          <p className="text-blue-600">{`Price: $${data.price.toFixed(2)}`}</p>
+          <p className="text-green-600">{`Setup Score: ${(data.setupScore * 100).toFixed(0)}%`}</p>
+          <p className="text-purple-600">{`Whale Activity: ${(data.whaleActivity * 100).toFixed(0)}%`}</p>
+          <p className="text-orange-600">{`Risk:Reward: ${data.riskReward.toFixed(1)}:1`}</p>
+          {data.hardTradeSignal > 0.7 && (
+            <p className="text-red-600 font-bold">🔥 HARD TRADE OPPORTUNITY</p>
+          )}
+          <p className="text-xs text-gray-500 mt-2">Dr. Paul's Analysis</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Market context analysis
   const analyzeDrPaulContext = () => {
     const price = liveData.ethPrice;
     let contextMessage = "";
@@ -122,7 +209,7 @@ const DrPaulLiveDashboard = () => {
     }
   }, [mounted]);
 
-  // Show loading until mounted (prevents hydration errors)
+  // Show loading until mounted
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -184,7 +271,6 @@ const DrPaulLiveDashboard = () => {
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {/* ETH Price Card */}
         <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500 relative">
           <div className="absolute top-2 right-2">
             <div className="flex items-center">
@@ -205,7 +291,6 @@ const DrPaulLiveDashboard = () => {
           </div>
         </div>
 
-        {/* Portfolio Card */}
         <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500">
           <div className="flex items-center justify-between">
             <div>
@@ -220,7 +305,6 @@ const DrPaulLiveDashboard = () => {
           </div>
         </div>
 
-        {/* Volume Card */}
         <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-purple-500">
           <div className="flex items-center justify-between">
             <div>
@@ -231,7 +315,6 @@ const DrPaulLiveDashboard = () => {
           </div>
         </div>
 
-        {/* Dr. Paul Score Card */}
         <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-orange-500">
           <div className="flex items-center justify-between">
             <div>
@@ -243,37 +326,186 @@ const DrPaulLiveDashboard = () => {
         </div>
       </div>
 
-      {/* Price Chart */}
+      {/* Enhanced Strategic Chart */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Live ETH Price Action</h2>
-          <div className="flex items-center text-sm text-gray-600">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-2"></div>
-            Real-time updates
+          <h2 className="text-xl font-semibold text-gray-800">🧠 Dr. Paul's Strategic Chart</h2>
+          <div className="flex items-center space-x-4 text-sm">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+              <span>ETH Price</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-orange-500 rounded-full mr-2"></div>
+              <span>Hard Trade Zones</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+              <span>Support Levels</span>
+            </div>
           </div>
         </div>
+
         <ResponsiveContainer width="100%" height={400}>
-          <LineChart data={priceHistory}>
-            <CartesianGrid strokeDasharray="3 3" />
+          <ComposedChart data={strategicChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
             <XAxis dataKey="time" />
-            <YAxis domain={['dataMin - 20', 'dataMax + 20']} />
-            <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'ETH Price']} />
+            <YAxis 
+              domain={['dataMin - 20', 'dataMax + 20']} 
+              tickFormatter={(value) => `$${value.toFixed(0)}`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            
+            {/* Dr. Paul's Strategic Zones */}
+            <ReferenceArea 
+              y1={strategicLevels.majorSupport} 
+              y2={strategicLevels.strongSupport} 
+              fill={COLORS.success} 
+              fillOpacity={0.1}
+              stroke={COLORS.success}
+              strokeDasharray="5 5"
+            />
+            
+            <ReferenceArea 
+              y1={strategicLevels.institutionalZone[0]} 
+              y2={strategicLevels.institutionalZone[1]} 
+              fill={COLORS.purple} 
+              fillOpacity={0.1}
+              stroke={COLORS.purple}
+              strokeDasharray="3 3"
+            />
+            
+            <ReferenceArea 
+              y1={strategicLevels.hardTradeZone[0]} 
+              y2={strategicLevels.hardTradeZone[1]} 
+              fill={COLORS.warning} 
+              fillOpacity={0.15}
+              stroke={COLORS.warning}
+              strokeDasharray="2 2"
+            />
+            
+            <ReferenceLine 
+              y={strategicLevels.majorResistance} 
+              stroke={COLORS.danger} 
+              strokeDasharray="8 4" 
+              strokeWidth={2}
+            />
+            <ReferenceLine 
+              y={strategicLevels.massStopLevel} 
+              stroke="#6B7280" 
+              strokeDasharray="4 2" 
+              strokeWidth={1}
+            />
+            
             <Line 
               type="monotone" 
               dataKey="price" 
-              stroke={COLORS.primary} 
+              stroke={COLORS.primary}
               strokeWidth={3}
-              dot={{ fill: COLORS.primary, strokeWidth: 2, r: 4 }}
+              dot={(props) => {
+                const { payload } = props;
+                if (payload && payload.hardTradeSignal > 0.7) {
+                  return <circle {...props} r={6} fill={COLORS.warning} stroke={COLORS.primary} strokeWidth={2} />;
+                }
+                return <circle {...props} r={4} fill={COLORS.primary} />;
+              }}
             />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
+
+        {/* Strategic Analysis */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-800 mb-3 flex items-center">
+              <Target className="mr-2" size={16} />
+              Dr. Paul's Strategy Zones
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="flex items-center">
+                  <div className="w-3 h-3 bg-red-500 rounded mr-2"></div>
+                  Major Resistance
+                </span>
+                <span className="font-mono">${strategicLevels.majorResistance}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="flex items-center">
+                  <div className="w-3 h-3 bg-purple-500 rounded mr-2"></div>
+                  Institutional Zone
+                </span>
+                <span className="font-mono">${strategicLevels.institutionalZone[0]}-${strategicLevels.institutionalZone[1]}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="flex items-center">
+                  <div className="w-3 h-3 bg-gray-500 rounded mr-2"></div>
+                  Mass Stop Level
+                </span>
+                <span className="font-mono">${strategicLevels.massStopLevel}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="flex items-center">
+                  <div className="w-3 h-3 bg-orange-500 rounded mr-2"></div>
+                  Hard Trade Zone
+                </span>
+                <span className="font-mono">${strategicLevels.hardTradeZone[0]}-${strategicLevels.hardTradeZone[1]}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-800 mb-3 flex items-center">
+              <Eye className="mr-2" size={16} />
+              Current Setup Analysis
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Price Position:</span>
+                <span className="font-semibold text-blue-600">
+                  {liveData.ethPrice > strategicLevels.institutionalZone[1] ? 'Above Institutional' :
+                   liveData.ethPrice > strategicLevels.institutionalZone[0] ? 'In Institutional Zone' :
+                   'Below Institutional'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Risk Level:</span>
+                <span className="font-semibold text-green-600">
+                  ${(liveData.ethPrice - strategicLevels.majorSupport).toFixed(0)} to Support
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Reward Potential:</span>
+                <span className="font-semibold text-red-600">
+                  ${(strategicLevels.majorResistance - liveData.ethPrice).toFixed(0)} to Resistance
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Dr. Paul Setup:</span>
+                <span className="font-semibold text-orange-600">
+                  {liveData.ethPrice < strategicLevels.hardTradeZone[1] ? 'HARD TRADE ZONE' : 'STANDARD SETUP'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Trading Insight */}
+        <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border-l-4 border-blue-500">
+          <h4 className="font-semibold text-gray-800 mb-2 flex items-center">
+            <AlertTriangle className="mr-2" size={16} />
+            Dr. Paul's Current Market Insight
+          </h4>
+          <p className="text-sm text-gray-700">
+            <strong>Entry Strategy:</strong> Looking for pullbacks to ${strategicLevels.hardTradeZone[1]} area where retail places stops. 
+            <strong> Risk Management:</strong> Stop below ${strategicLevels.majorSupport}, target ${strategicLevels.majorResistance}. 
+            <strong> Setup Quality:</strong> High conviction when whale activity exceeds 80% during price weakness.
+          </p>
+        </div>
       </div>
 
-      {/* Dr. Paul's Signals */}
+      {/* Dr. Paul's Live Signals */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">🧠 Dr. Paul's Live Trading Signals</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Hard Trade Signal */}
           <div className="bg-white rounded-lg shadow-md p-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Hard Trade Opportunity</h3>
             <div className="flex items-center mb-2">
@@ -288,7 +520,6 @@ const DrPaulLiveDashboard = () => {
             <p className="text-sm text-gray-600">Counter-trend setup requiring courage</p>
           </div>
 
-          {/* Whale Accumulation */}
           <div className="bg-white rounded-lg shadow-md p-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Whale Accumulation</h3>
             <div className="flex items-center mb-2">
@@ -303,7 +534,6 @@ const DrPaulLiveDashboard = () => {
             <p className="text-sm text-gray-600">Smart money accumulation (STRONG)</p>
           </div>
 
-          {/* Institutional Flow */}
           <div className="bg-white rounded-lg shadow-md p-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">Institutional Flow</h3>
             <div className="flex items-center mb-2">
@@ -341,8 +571,8 @@ const DrPaulLiveDashboard = () => {
           <h3 className="font-semibold mb-2">💡 Real-Time Analysis:</h3>
           <p className="text-sm opacity-90">
             ETH trading at ${liveData.ethPrice.toFixed(2)} with strong institutional inflows. 
-            Exchange outflows at {onChainMetrics.exchangeFlow.toLocaleString()} ETH showing accumulation pattern.
-            Current setup quality rated as {drPaulSignals.setupQuality} based on Dr. Paul's methodology.
+            Current position {liveData.ethPrice > strategicLevels.institutionalZone[1] ? 'above' : 'within'} institutional zone.
+            Setup quality rated as {drPaulSignals.setupQuality} based on Dr. Paul's methodology.
           </p>
         </div>
       </div>
