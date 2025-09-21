@@ -26,7 +26,6 @@ alembic>=1.7.0
 fastapi>=0.68.0
 uvicorn>=0.15.0
 pydantic>=1.8.0
-python-cors>=0.1.0
 
 # Configuration
 pyyaml>=5.4.0
