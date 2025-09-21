@@ -1,5 +1,5 @@
-import DrPaulDashboard from '../components/DrPaulDashboard';
+import DrPaulLiveDashboard from '../components/DrPaulDashboard';
 
 export default function Home() {
-  return <DrPaulDashboard />;
+  return <DrPaulLiveDashboard />;
 }
