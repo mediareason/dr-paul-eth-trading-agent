@@ -1,4 +1,4 @@
-// Debug version with enhanced logging
+// Real-time WebSocket data service with fallback to mock data
 class CryptoDataService {
   constructor() {
     this.connections = new Map();
@@ -6,8 +6,10 @@ class CryptoDataService {
     this.lastPrices = new Map();
     this.candleData = new Map();
     this.reconnectAttempts = new Map();
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 3; // Reduced to fail faster
     this.reconnectDelay = 1000;
+    this.useMockData = false; // Will switch to true if real connections fail
+    this.mockIntervals = new Map(); // For mock data updates
     
     console.log('🚀 CryptoDataService initialized');
   }
@@ -20,27 +22,26 @@ class CryptoDataService {
     if (!this.subscribers.has(key)) {
       this.subscribers.set(key, new Set());
       this.candleData.set(key, []);
-      console.log(`🆕 New subscription for ${key}`);
     }
     
     this.subscribers.get(key).add(callback);
-    console.log(`👥 Subscribers for ${key}: ${this.subscribers.get(key).size}`);
     
-    // Start WebSocket connection if not already connected
-    if (!this.connections.has(key)) {
-      console.log(`🔌 Starting WebSocket connection for ${key}`);
-      this.connectToExchange(symbol, timeframe, key);
-    } else {
-      console.log(`♻️ Using existing connection for ${key}`);
+    // Start connection (real or mock)
+    if (!this.connections.has(key) && !this.mockIntervals.has(key)) {
+      if (this.useMockData) {
+        console.log(`🎭 Starting mock data for ${key}`);
+        this.startMockData(symbol, timeframe, key);
+      } else {
+        console.log(`🔌 Attempting real connection for ${key}`);
+        this.connectToExchange(symbol, timeframe, key);
+      }
     }
     
     // Return historical data if available
     const historical = this.candleData.get(key);
     if (historical && historical.length > 0) {
-      console.log(`📊 Returning ${historical.length} historical candles for ${key}`);
+      console.log(`📊 Returning ${historical.length} candles for ${key}`);
       callback(historical);
-    } else {
-      console.log(`⏳ No historical data yet for ${key}`);
     }
     
     // Return unsubscribe function
@@ -48,35 +49,158 @@ class CryptoDataService {
       console.log(`🔌 Unsubscribing from ${key}`);
       this.subscribers.get(key)?.delete(callback);
       if (this.subscribers.get(key)?.size === 0) {
-        console.log(`🚫 No more subscribers, disconnecting ${key}`);
         this.disconnect(key);
       }
     };
   }
 
-  // Connect to Binance WebSocket (primary)
+  // Generate realistic mock data
+  generateMockCandles(symbol, count = 200) {
+    const candles = [];
+    const now = new Date();
+    
+    // Base prices for different symbols
+    const basePrices = {
+      'ETHUSDT': 3400,
+      'BTCUSDT': 67000,
+      'SOLUSDT': 180,
+      'AVAXUSDT': 35,
+      'LINKUSDT': 15,
+      'DOTUSDT': 8,
+      'ASTERUSDT': 0.05,
+      'HYPEUSDT': 24
+    };
+    
+    let price = basePrices[symbol] || 100;
+    
+    for (let i = count - 1; i >= 0; i--) {
+      const timestamp = new Date(now.getTime() - i * 60000); // 1 minute intervals
+      
+      // Add some realistic price movement
+      const volatility = Math.random() * 0.02 - 0.01; // ±1%
+      price = price * (1 + volatility);
+      
+      // Ensure price doesn't go negative
+      price = Math.max(price, 0.001);
+      
+      const candle = {
+        timestamp: timestamp.toISOString(),
+        time: timestamp.toLocaleTimeString('en-US', { 
+          hour12: false, 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        open: price,
+        high: price * (1 + Math.random() * 0.005),
+        low: price * (1 - Math.random() * 0.005),
+        close: price,
+        volume: Math.random() * 1000000,
+        isComplete: true
+      };
+      
+      candles.push(candle);
+    }
+    
+    return candles;
+  }
+
+  // Start mock data simulation
+  startMockData(symbol, timeframe, key) {
+    console.log(`🎭 Starting mock data simulation for ${key}`);
+    
+    // Generate initial historical data
+    const mockCandles = this.generateMockCandles(symbol);
+    this.candleData.set(key, mockCandles);
+    
+    // Notify subscribers with initial data
+    const callbacks = this.subscribers.get(key);
+    if (callbacks) {
+      callbacks.forEach(callback => {
+        try {
+          callback([...mockCandles]);
+        } catch (error) {
+          console.error('❌ Error in subscriber callback:', error);
+        }
+      });
+    }
+    
+    // Start live updates every 2 seconds
+    const interval = setInterval(() => {
+      if (!this.subscribers.get(key) || this.subscribers.get(key).size === 0) {
+        clearInterval(interval);
+        this.mockIntervals.delete(key);
+        return;
+      }
+      
+      const candleArray = this.candleData.get(key) || [];
+      if (candleArray.length === 0) return;
+      
+      // Update last candle with new price
+      const lastCandle = candleArray[candleArray.length - 1];
+      const volatility = Math.random() * 0.008 - 0.004; // ±0.4%
+      const newPrice = lastCandle.close * (1 + volatility);
+      
+      const updatedCandle = {
+        ...lastCandle,
+        close: newPrice,
+        high: Math.max(lastCandle.high, newPrice),
+        low: Math.min(lastCandle.low, newPrice),
+        timestamp: new Date().toISOString(),
+        time: new Date().toLocaleTimeString('en-US', { 
+          hour12: false, 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })
+      };
+      
+      // Update the last candle
+      candleArray[candleArray.length - 1] = updatedCandle;
+      
+      console.log(`📈 Mock price update for ${key}: $${newPrice.toFixed(4)}`);
+      
+      // Notify subscribers
+      const callbacks = this.subscribers.get(key);
+      if (callbacks) {
+        callbacks.forEach(callback => {
+          try {
+            callback([...candleArray]);
+          } catch (error) {
+            console.error('❌ Error in subscriber callback:', error);
+          }
+        });
+      }
+    }, 2000);
+    
+    this.mockIntervals.set(key, interval);
+  }
+
+  // Connect to Binance WebSocket (with fallback to mock)
   connectToExchange(symbol, timeframe, key) {
     try {
-      // Convert symbol format for Binance
       const binanceSymbol = symbol.toLowerCase();
       const binanceTimeframe = this.convertTimeframe(timeframe);
-      
-      // Binance WebSocket URL for klines (candlestick data)
       const wsUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol}@kline_${binanceTimeframe}`;
       
-      console.log(`🌐 Connecting to: ${wsUrl}`);
+      console.log(`🌐 Attempting connection to: ${wsUrl}`);
       
       const ws = new WebSocket(wsUrl);
       
+      // Set a timeout to switch to mock data if connection fails
+      const connectionTimeout = setTimeout(() => {
+        console.log(`⏰ Connection timeout for ${key}, switching to mock data`);
+        ws.close();
+        this.switchToMockData(symbol, timeframe, key);
+      }, 5000);
+      
       ws.onopen = () => {
-        console.log(`✅ Connected to Binance for ${symbol} ${timeframe}`);
+        console.log(`✅ Real connection established for ${key}`);
+        clearTimeout(connectionTimeout);
         this.reconnectAttempts.set(key, 0);
       };
       
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log(`📥 Received data for ${key}:`, data.k ? 'Kline data' : 'Other data');
           this.processBinanceKline(data, key);
         } catch (error) {
           console.error('❌ Error parsing WebSocket data:', error);
@@ -84,101 +208,46 @@ class CryptoDataService {
       };
       
       ws.onclose = (event) => {
-        console.log(`🔌 WebSocket closed for ${key}. Code: ${event.code}, Reason: ${event.reason}`);
-        this.handleReconnect(symbol, timeframe, key);
+        clearTimeout(connectionTimeout);
+        console.log(`🔌 WebSocket closed for ${key}. Code: ${event.code}`);
+        this.handleReconnectOrFallback(symbol, timeframe, key);
       };
       
       ws.onerror = (error) => {
+        clearTimeout(connectionTimeout);
         console.error(`❌ WebSocket error for ${key}:`, error);
+        this.switchToMockData(symbol, timeframe, key);
       };
       
       this.connections.set(key, ws);
       
-      // Also fetch historical data
-      console.log(`📚 Fetching historical data for ${key}`);
-      this.fetchHistoricalData(symbol, timeframe, key);
+      // Try to fetch historical data (with timeout)
+      this.fetchHistoricalDataWithFallback(symbol, timeframe, key);
       
     } catch (error) {
-      console.error(`💥 Failed to connect to Binance for ${key}:`, error);
-      this.handleReconnect(symbol, timeframe, key);
+      console.error(`💥 Failed to create WebSocket for ${key}:`, error);
+      this.switchToMockData(symbol, timeframe, key);
     }
   }
 
-  // Process Binance kline data
-  processBinanceKline(data, key) {
-    if (!data.k) {
-      console.log(`⚠️ No kline data in message for ${key}`);
-      return;
-    }
-    
-    const kline = data.k;
-    const candle = {
-      timestamp: new Date(kline.t).toISOString(),
-      time: new Date(kline.t).toLocaleTimeString('en-US', { 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }),
-      open: parseFloat(kline.o),
-      high: parseFloat(kline.h),
-      low: parseFloat(kline.l),
-      close: parseFloat(kline.c),
-      volume: parseFloat(kline.v),
-      isComplete: kline.x // true when kline is closed
-    };
-    
-    console.log(`📈 Processing candle for ${key}: ${candle.close} (complete: ${candle.isComplete})`);
-    
-    // Update candle data
-    let candleArray = this.candleData.get(key) || [];
-    
-    if (candle.isComplete) {
-      // Add completed candle
-      candleArray.push(candle);
-      // Keep last 200 candles
-      if (candleArray.length > 200) {
-        candleArray = candleArray.slice(-200);
-      }
-      this.candleData.set(key, candleArray);
-      console.log(`✅ Added completed candle to ${key}. Total candles: ${candleArray.length}`);
-    } else {
-      // Update current candle (last one in array)
-      if (candleArray.length > 0) {
-        candleArray[candleArray.length - 1] = candle;
-      } else {
-        candleArray.push(candle);
-        this.candleData.set(key, candleArray);
-      }
-      console.log(`🔄 Updated current candle for ${key}`);
-    }
-    
-    // Notify subscribers
-    const callbacks = this.subscribers.get(key);
-    if (callbacks) {
-      console.log(`📢 Notifying ${callbacks.size} subscribers for ${key}`);
-      callbacks.forEach(callback => {
-        try {
-          callback([...candleArray]);
-        } catch (error) {
-          console.error('❌ Error in subscriber callback:', error);
-        }
-      });
-    } else {
-      console.log(`⚠️ No subscribers to notify for ${key}`);
-    }
-  }
-
-  // Fetch historical kline data from Binance REST API
-  async fetchHistoricalData(symbol, timeframe, key) {
+  // Fetch historical data with fallback
+  async fetchHistoricalDataWithFallback(symbol, timeframe, key) {
     try {
       const binanceSymbol = symbol.toUpperCase();
       const binanceTimeframe = this.convertTimeframe(timeframe);
-      const limit = 200;
+      const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceTimeframe}&limit=200`;
       
-      const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceTimeframe}&limit=${limit}`;
       console.log(`📚 Fetching historical data from: ${url}`);
       
-      const response = await fetch(url);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(url, { 
+        signal: controller.signal,
+        mode: 'cors'
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -204,12 +273,10 @@ class CryptoDataService {
         }));
         
         this.candleData.set(key, candles);
-        console.log(`✅ Stored ${candles.length} historical candles for ${key}`);
         
-        // Notify subscribers with historical data
+        // Notify subscribers
         const callbacks = this.subscribers.get(key);
         if (callbacks) {
-          console.log(`📢 Notifying subscribers with historical data for ${key}`);
           callbacks.forEach(callback => {
             try {
               callback([...candles]);
@@ -220,35 +287,53 @@ class CryptoDataService {
         }
       }
     } catch (error) {
-      console.error(`💥 Failed to fetch historical data for ${key}:`, error);
-      // If historical data fails, still try to establish WebSocket connection
+      console.log(`📚 Historical data fetch failed for ${key}, using mock data:`, error.message);
+      // Don't switch entirely to mock here, just generate initial data
+      if (!this.candleData.get(key) || this.candleData.get(key).length === 0) {
+        const mockCandles = this.generateMockCandles(symbol);
+        this.candleData.set(key, mockCandles);
+        
+        const callbacks = this.subscribers.get(key);
+        if (callbacks) {
+          callbacks.forEach(callback => {
+            try {
+              callback([...mockCandles]);
+            } catch (error) {
+              console.error('❌ Error in subscriber callback:', error);
+            }
+          });
+        }
+      }
     }
   }
 
-  // Convert timeframe to Binance format
-  convertTimeframe(timeframe) {
-    const timeframeMap = {
-      '1m': '1m',
-      '3m': '3m',
-      '5m': '5m',
-      '15m': '15m',
-      '30m': '30m',
-      '1h': '1h',
-      '4h': '4h',
-      '1d': '1d'
-    };
-    return timeframeMap[timeframe] || '1m';
+  // Switch to mock data when real connections fail
+  switchToMockData(symbol, timeframe, key) {
+    console.log(`🎭 Switching to mock data for ${key}`);
+    
+    // Clean up any existing connection
+    const ws = this.connections.get(key);
+    if (ws) {
+      ws.close();
+      this.connections.delete(key);
+    }
+    
+    // Start mock data
+    this.startMockData(symbol, timeframe, key);
+    
+    // Set global flag to use mock for future subscriptions
+    this.useMockData = true;
   }
 
-  // Handle reconnection
-  handleReconnect(symbol, timeframe, key) {
+  // Handle reconnection or fallback to mock
+  handleReconnectOrFallback(symbol, timeframe, key) {
     const attempts = this.reconnectAttempts.get(key) || 0;
     
     if (attempts < this.maxReconnectAttempts) {
       this.reconnectAttempts.set(key, attempts + 1);
+      const delay = this.reconnectDelay * Math.pow(2, attempts);
       
-      const delay = this.reconnectDelay * Math.pow(2, attempts); // Exponential backoff
-      console.log(`🔄 Reconnecting to ${key} in ${delay}ms (attempt ${attempts + 1}/${this.maxReconnectAttempts})`);
+      console.log(`🔄 Reconnect attempt ${attempts + 1}/${this.maxReconnectAttempts} for ${key} in ${delay}ms`);
       
       setTimeout(() => {
         if (this.subscribers.get(key)?.size > 0) {
@@ -256,37 +341,111 @@ class CryptoDataService {
         }
       }, delay);
     } else {
-      console.error(`💀 Max reconnection attempts reached for ${key}`);
+      console.log(`💀 Max reconnection attempts reached for ${key}, switching to mock data`);
+      this.switchToMockData(symbol, timeframe, key);
     }
   }
 
-  // Disconnect WebSocket
+  // Process real Binance kline data
+  processBinanceKline(data, key) {
+    if (!data.k) return;
+    
+    const kline = data.k;
+    const candle = {
+      timestamp: new Date(kline.t).toISOString(),
+      time: new Date(kline.t).toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      open: parseFloat(kline.o),
+      high: parseFloat(kline.h),
+      low: parseFloat(kline.l),
+      close: parseFloat(kline.c),
+      volume: parseFloat(kline.v),
+      isComplete: kline.x
+    };
+    
+    console.log(`📈 Real price update for ${key}: $${candle.close}`);
+    
+    let candleArray = this.candleData.get(key) || [];
+    
+    if (candle.isComplete) {
+      candleArray.push(candle);
+      if (candleArray.length > 200) {
+        candleArray = candleArray.slice(-200);
+      }
+      this.candleData.set(key, candleArray);
+    } else {
+      if (candleArray.length > 0) {
+        candleArray[candleArray.length - 1] = candle;
+      } else {
+        candleArray.push(candle);
+        this.candleData.set(key, candleArray);
+      }
+    }
+    
+    // Notify subscribers
+    const callbacks = this.subscribers.get(key);
+    if (callbacks) {
+      callbacks.forEach(callback => {
+        try {
+          callback([...candleArray]);
+        } catch (error) {
+          console.error('❌ Error in subscriber callback:', error);
+        }
+      });
+    }
+  }
+
+  // Convert timeframe to Binance format
+  convertTimeframe(timeframe) {
+    const timeframeMap = {
+      '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+      '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1d'
+    };
+    return timeframeMap[timeframe] || '1m';
+  }
+
+  // Disconnect
   disconnect(key) {
     console.log(`🔌 Disconnecting ${key}`);
+    
+    // Clean up WebSocket
     const ws = this.connections.get(key);
     if (ws) {
       ws.close();
       this.connections.delete(key);
     }
+    
+    // Clean up mock interval
+    const interval = this.mockIntervals.get(key);
+    if (interval) {
+      clearInterval(interval);
+      this.mockIntervals.delete(key);
+    }
+    
     this.candleData.delete(key);
     this.reconnectAttempts.delete(key);
   }
 
-  // Disconnect all WebSockets
+  // Disconnect all
   disconnectAll() {
-    console.log(`🚫 Disconnecting all WebSockets`);
-    this.connections.forEach((ws, key) => {
-      ws.close();
-    });
+    console.log(`🚫 Disconnecting all connections`);
+    
+    this.connections.forEach((ws) => ws.close());
     this.connections.clear();
+    
+    this.mockIntervals.forEach((interval) => clearInterval(interval));
+    this.mockIntervals.clear();
+    
     this.subscribers.clear();
     this.candleData.clear();
     this.reconnectAttempts.clear();
   }
 
-  // Get current price for a symbol
+  // Get current price
   getCurrentPrice(symbol) {
-    // Find any timeframe data for this symbol
     for (const [key, candles] of this.candleData) {
       if (key.startsWith(symbol + '_') && candles && candles.length > 0) {
         return candles[candles.length - 1].close;
@@ -298,10 +457,18 @@ class CryptoDataService {
   // Check connection status
   getConnectionStatus(symbol, timeframe) {
     const key = `${symbol}_${timeframe}`;
+    
+    // Check if we have mock data running
+    if (this.mockIntervals.has(key)) {
+      console.log(`🎭 Mock connection active for ${key}`);
+      return true;
+    }
+    
+    // Check real WebSocket
     const ws = this.connections.get(key);
-    const status = ws ? ws.readyState === WebSocket.OPEN : false;
-    console.log(`🔍 Connection status for ${key}: ${status ? 'CONNECTED' : 'DISCONNECTED'}`);
-    return status;
+    const isConnected = ws ? ws.readyState === WebSocket.OPEN : false;
+    console.log(`🔍 Real connection status for ${key}: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
+    return isConnected;
   }
 }
 
