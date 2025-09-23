@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, AlertTriangle, Target, Zap, DollarSign, Wifi, WifiOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Target, Zap, DollarSign, Wifi, WifiOff, BarChart3 } from 'lucide-react';
 import cryptoDataService from '../lib/cryptoDataService';
 
 const ScalpingTracker = () => {
@@ -373,7 +373,8 @@ const ScalpingTracker = () => {
       {/* Chart */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          📈 Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe
+          <BarChart3 className="w-5 h-5" />
+          Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe
         </h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
