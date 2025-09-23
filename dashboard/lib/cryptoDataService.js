@@ -1,4 +1,4 @@
-// Real-time WebSocket data service for crypto exchanges
+// Debug version with enhanced logging
 class CryptoDataService {
   constructor() {
     this.connections = new Map();
@@ -8,34 +8,47 @@ class CryptoDataService {
     this.reconnectAttempts = new Map();
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000;
+    
+    console.log('🚀 CryptoDataService initialized');
   }
 
   // Subscribe to real-time data for a symbol
   subscribe(symbol, timeframe, callback) {
     const key = `${symbol}_${timeframe}`;
+    console.log(`📡 Subscribing to ${key}`);
     
     if (!this.subscribers.has(key)) {
       this.subscribers.set(key, new Set());
       this.candleData.set(key, []);
+      console.log(`🆕 New subscription for ${key}`);
     }
     
     this.subscribers.get(key).add(callback);
+    console.log(`👥 Subscribers for ${key}: ${this.subscribers.get(key).size}`);
     
     // Start WebSocket connection if not already connected
     if (!this.connections.has(key)) {
+      console.log(`🔌 Starting WebSocket connection for ${key}`);
       this.connectToExchange(symbol, timeframe, key);
+    } else {
+      console.log(`♻️ Using existing connection for ${key}`);
     }
     
     // Return historical data if available
     const historical = this.candleData.get(key);
     if (historical && historical.length > 0) {
+      console.log(`📊 Returning ${historical.length} historical candles for ${key}`);
       callback(historical);
+    } else {
+      console.log(`⏳ No historical data yet for ${key}`);
     }
     
     // Return unsubscribe function
     return () => {
+      console.log(`🔌 Unsubscribing from ${key}`);
       this.subscribers.get(key)?.delete(callback);
       if (this.subscribers.get(key)?.size === 0) {
+        console.log(`🚫 No more subscribers, disconnecting ${key}`);
         this.disconnect(key);
       }
     };
@@ -51,47 +64,52 @@ class CryptoDataService {
       // Binance WebSocket URL for klines (candlestick data)
       const wsUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol}@kline_${binanceTimeframe}`;
       
-      console.log(`Connecting to Binance WebSocket: ${wsUrl}`);
+      console.log(`🌐 Connecting to: ${wsUrl}`);
       
       const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
-        console.log(`Connected to Binance for ${symbol} ${timeframe}`);
+        console.log(`✅ Connected to Binance for ${symbol} ${timeframe}`);
         this.reconnectAttempts.set(key, 0);
       };
       
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log(`📥 Received data for ${key}:`, data.k ? 'Kline data' : 'Other data');
           this.processBinanceKline(data, key);
         } catch (error) {
-          console.error('Error parsing WebSocket data:', error);
+          console.error('❌ Error parsing WebSocket data:', error);
         }
       };
       
-      ws.onclose = () => {
-        console.log(`Binance WebSocket closed for ${key}`);
+      ws.onclose = (event) => {
+        console.log(`🔌 WebSocket closed for ${key}. Code: ${event.code}, Reason: ${event.reason}`);
         this.handleReconnect(symbol, timeframe, key);
       };
       
       ws.onerror = (error) => {
-        console.error(`Binance WebSocket error for ${key}:`, error);
+        console.error(`❌ WebSocket error for ${key}:`, error);
       };
       
       this.connections.set(key, ws);
       
       // Also fetch historical data
+      console.log(`📚 Fetching historical data for ${key}`);
       this.fetchHistoricalData(symbol, timeframe, key);
       
     } catch (error) {
-      console.error(`Failed to connect to Binance for ${key}:`, error);
+      console.error(`💥 Failed to connect to Binance for ${key}:`, error);
       this.handleReconnect(symbol, timeframe, key);
     }
   }
 
   // Process Binance kline data
   processBinanceKline(data, key) {
-    if (!data.k) return;
+    if (!data.k) {
+      console.log(`⚠️ No kline data in message for ${key}`);
+      return;
+    }
     
     const kline = data.k;
     const candle = {
@@ -109,6 +127,8 @@ class CryptoDataService {
       isComplete: kline.x // true when kline is closed
     };
     
+    console.log(`📈 Processing candle for ${key}: ${candle.close} (complete: ${candle.isComplete})`);
+    
     // Update candle data
     let candleArray = this.candleData.get(key) || [];
     
@@ -120,25 +140,31 @@ class CryptoDataService {
         candleArray = candleArray.slice(-200);
       }
       this.candleData.set(key, candleArray);
+      console.log(`✅ Added completed candle to ${key}. Total candles: ${candleArray.length}`);
     } else {
       // Update current candle (last one in array)
       if (candleArray.length > 0) {
         candleArray[candleArray.length - 1] = candle;
       } else {
         candleArray.push(candle);
+        this.candleData.set(key, candleArray);
       }
+      console.log(`🔄 Updated current candle for ${key}`);
     }
     
     // Notify subscribers
     const callbacks = this.subscribers.get(key);
     if (callbacks) {
+      console.log(`📢 Notifying ${callbacks.size} subscribers for ${key}`);
       callbacks.forEach(callback => {
         try {
           callback([...candleArray]);
         } catch (error) {
-          console.error('Error in subscriber callback:', error);
+          console.error('❌ Error in subscriber callback:', error);
         }
       });
+    } else {
+      console.log(`⚠️ No subscribers to notify for ${key}`);
     }
   }
 
@@ -150,6 +176,7 @@ class CryptoDataService {
       const limit = 200;
       
       const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceTimeframe}&limit=${limit}`;
+      console.log(`📚 Fetching historical data from: ${url}`);
       
       const response = await fetch(url);
       
@@ -158,6 +185,7 @@ class CryptoDataService {
       }
       
       const data = await response.json();
+      console.log(`📊 Received ${data.length} historical candles for ${key}`);
       
       if (Array.isArray(data)) {
         const candles = data.map(kline => ({
@@ -176,21 +204,23 @@ class CryptoDataService {
         }));
         
         this.candleData.set(key, candles);
+        console.log(`✅ Stored ${candles.length} historical candles for ${key}`);
         
         // Notify subscribers with historical data
         const callbacks = this.subscribers.get(key);
         if (callbacks) {
+          console.log(`📢 Notifying subscribers with historical data for ${key}`);
           callbacks.forEach(callback => {
             try {
               callback([...candles]);
             } catch (error) {
-              console.error('Error in subscriber callback:', error);
+              console.error('❌ Error in subscriber callback:', error);
             }
           });
         }
       }
     } catch (error) {
-      console.error(`Failed to fetch historical data for ${key}:`, error);
+      console.error(`💥 Failed to fetch historical data for ${key}:`, error);
       // If historical data fails, still try to establish WebSocket connection
     }
   }
@@ -218,7 +248,7 @@ class CryptoDataService {
       this.reconnectAttempts.set(key, attempts + 1);
       
       const delay = this.reconnectDelay * Math.pow(2, attempts); // Exponential backoff
-      console.log(`Reconnecting to ${key} in ${delay}ms (attempt ${attempts + 1})`);
+      console.log(`🔄 Reconnecting to ${key} in ${delay}ms (attempt ${attempts + 1}/${this.maxReconnectAttempts})`);
       
       setTimeout(() => {
         if (this.subscribers.get(key)?.size > 0) {
@@ -226,12 +256,13 @@ class CryptoDataService {
         }
       }, delay);
     } else {
-      console.error(`Max reconnection attempts reached for ${key}`);
+      console.error(`💀 Max reconnection attempts reached for ${key}`);
     }
   }
 
   // Disconnect WebSocket
   disconnect(key) {
+    console.log(`🔌 Disconnecting ${key}`);
     const ws = this.connections.get(key);
     if (ws) {
       ws.close();
@@ -243,6 +274,7 @@ class CryptoDataService {
 
   // Disconnect all WebSockets
   disconnectAll() {
+    console.log(`🚫 Disconnecting all WebSockets`);
     this.connections.forEach((ws, key) => {
       ws.close();
     });
@@ -267,7 +299,9 @@ class CryptoDataService {
   getConnectionStatus(symbol, timeframe) {
     const key = `${symbol}_${timeframe}`;
     const ws = this.connections.get(key);
-    return ws ? ws.readyState === WebSocket.OPEN : false;
+    const status = ws ? ws.readyState === WebSocket.OPEN : false;
+    console.log(`🔍 Connection status for ${key}: ${status ? 'CONNECTED' : 'DISCONNECTED'}`);
+    return status;
   }
 }
 
