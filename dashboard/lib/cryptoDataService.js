@@ -47,11 +47,8 @@ class CryptoDataService {
   startDataUpdates(symbol, timeframe, key) {
     console.log(`🔄 Starting CoinGecko data updates for ${key}`);
     
-    // Generate initial historical data
-    this.generateInitialData(symbol, key);
-    
-    // Fetch real price immediately
-    this.fetchRealPrice(symbol, key);
+    // Fetch real price first, then generate historical data
+    this.fetchRealPrice(symbol, key, true); // true = initial fetch
     
     // Set up periodic updates (every 10 seconds)
     const interval = setInterval(() => {
@@ -61,37 +58,57 @@ class CryptoDataService {
         return;
       }
       
-      this.fetchRealPrice(symbol, key);
+      this.fetchRealPrice(symbol, key, false); // false = regular update
     }, 10000); // Update every 10 seconds
     
     this.updateIntervals.set(key, interval);
   }
 
-  // Generate initial realistic data
-  generateInitialData(symbol, key) {
-    const basePrices = {
-      'ETHUSDT': 3400,
-      'BTCUSDT': 67000,
-      'SOLUSDT': 180,
-      'AVAXUSDT': 35,
-      'LINKUSDT': 15,
-      'DOTUSDT': 8,
-      'ASTERUSDT': 0.05,
-      'HYPEUSDT': 24
-    };
-    
-    let price = basePrices[symbol] || 100;
+  // Generate realistic historical data anchored to current price
+  generateHistoricalData(symbol, currentRealPrice, key) {
     const candles = [];
     const now = new Date();
     
-    // Generate 200 historical candles
+    // Start from current real price and work backwards
+    let price = currentRealPrice;
+    const prices = []; // Store all prices first
+    
+    // Generate realistic price movement working backwards
     for (let i = 199; i >= 0; i--) {
-      const timestamp = new Date(now.getTime() - i * 60000); // 1 minute intervals
+      // Realistic ETH volatility patterns
+      let dailyVolatility = 0.03; // 3% daily volatility for ETH
+      if (symbol.includes('BTC')) dailyVolatility = 0.025; // 2.5% for BTC
+      if (symbol.includes('SOL') || symbol.includes('AVAX')) dailyVolatility = 0.05; // 5% for alts
       
-      // Add realistic price movement
-      const volatility = Math.random() * 0.02 - 0.01; // ±1%
-      price = price * (1 + volatility);
-      price = Math.max(price, 0.001); // Ensure positive price
+      // Convert to per-minute volatility
+      const minuteVolatility = dailyVolatility / Math.sqrt(1440); // 1440 minutes per day
+      
+      // Add some trend bias (slight downward trend to current price makes sense)
+      const trendBias = i > 100 ? -0.0001 : 0; // Slight downward bias in older data
+      const volatility = (Math.random() * 2 - 1) * minuteVolatility + trendBias;
+      
+      // Calculate previous price
+      const prevPrice = price / (1 + volatility);
+      prices.unshift(prevPrice); // Add to beginning of array
+      price = prevPrice;
+    }
+    
+    // Add the current real price as the latest
+    prices.push(currentRealPrice);
+    
+    // Now create candles with proper OHLC based on realistic price progression
+    for (let i = 0; i < 200; i++) {
+      const timestamp = new Date(now.getTime() - (199 - i) * 60000); // 1 minute intervals
+      const basePrice = prices[i];
+      
+      // Create realistic OHLC for each candle
+      const wickRange = basePrice * 0.002; // 0.2% wick range
+      const bodyRange = basePrice * 0.001; // 0.1% body range
+      
+      const open = basePrice + (Math.random() * 2 - 1) * bodyRange;
+      const close = basePrice + (Math.random() * 2 - 1) * bodyRange;
+      const high = Math.max(open, close) + Math.random() * wickRange;
+      const low = Math.min(open, close) - Math.random() * wickRange;
       
       const candle = {
         timestamp: timestamp.toISOString(),
@@ -100,11 +117,11 @@ class CryptoDataService {
           hour: '2-digit', 
           minute: '2-digit' 
         }),
-        open: price,
-        high: price * (1 + Math.random() * 0.01),
-        low: price * (1 - Math.random() * 0.01),
-        close: price,
-        volume: Math.random() * 1000000,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        volume: Math.random() * 1000000 + 500000, // 500K-1.5M volume
         isComplete: true
       };
       
@@ -112,14 +129,14 @@ class CryptoDataService {
     }
     
     this.candleData.set(key, candles);
-    console.log(`📚 Generated ${candles.length} initial candles for ${key}`);
+    console.log(`📚 Generated ${candles.length} realistic candles for ${key} anchored to $${currentRealPrice.toFixed(2)}`);
     
     // Notify subscribers
     this.notifySubscribers(key, candles);
   }
 
   // Fetch real price from CoinGecko (same as Dr. Paul app)
-  async fetchRealPrice(symbol, key) {
+  async fetchRealPrice(symbol, key, isInitialFetch = false) {
     try {
       // Map trading symbols to CoinGecko IDs
       const coinGeckoIds = {
@@ -136,7 +153,7 @@ class CryptoDataService {
       const coinId = coinGeckoIds[symbol];
       if (!coinId) {
         console.log(`⚠️ No CoinGecko ID for ${symbol}, using mock data`);
-        this.updateWithMockPrice(symbol, key);
+        this.updateWithMockPrice(symbol, key, isInitialFetch);
         return;
       }
       
@@ -157,7 +174,14 @@ class CryptoDataService {
         
         console.log(`✅ Real price for ${symbol}: $${newPrice} (${priceChange.toFixed(2)}%)`);
         
-        this.updatePriceData(symbol, key, newPrice);
+        if (isInitialFetch) {
+          // Generate initial historical data anchored to real price
+          this.generateHistoricalData(symbol, newPrice, key);
+        } else {
+          // Update existing data with new real price
+          this.updatePriceData(symbol, key, newPrice);
+        }
+        
         this.lastPrices.set(symbol, { price: newPrice, change: priceChange });
       } else {
         throw new Error('Invalid data format');
@@ -165,7 +189,7 @@ class CryptoDataService {
       
     } catch (error) {
       console.log(`📡 CoinGecko fetch failed for ${symbol}, using mock data:`, error.message);
-      this.updateWithMockPrice(symbol, key);
+      this.updateWithMockPrice(symbol, key, isInitialFetch);
     }
   }
 
@@ -196,34 +220,55 @@ class CryptoDataService {
     this.notifySubscribers(key, candleArray);
   }
 
-  // Update with realistic mock price
-  updateWithMockPrice(symbol, key) {
-    const candleArray = this.candleData.get(key) || [];
-    if (candleArray.length === 0) return;
-    
-    const lastCandle = candleArray[candleArray.length - 1];
-    const volatility = Math.random() * 0.008 - 0.004; // ±0.4%
-    const newPrice = lastCandle.close * (1 + volatility);
-    
-    const updatedCandle = {
-      ...lastCandle,
-      close: newPrice,
-      high: Math.max(lastCandle.high, newPrice),
-      low: Math.min(lastCandle.low, newPrice),
-      timestamp: new Date().toISOString(),
-      time: new Date().toLocaleTimeString('en-US', { 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      })
+  // Update with realistic mock price (fallback)
+  updateWithMockPrice(symbol, key, isInitialFetch = false) {
+    // Realistic current prices for major cryptos (Sept 2025)
+    const fallbackPrices = {
+      'ETHUSDT': 3850,  // ETH around $3850
+      'BTCUSDT': 68000, // BTC around $68k  
+      'SOLUSDT': 195,   // SOL around $195
+      'AVAXUSDT': 38,   // AVAX around $38
+      'LINKUSDT': 16,   // LINK around $16
+      'DOTUSDT': 9,     // DOT around $9
+      'ASTERUSDT': 0.08, // ASTER around $0.08
+      'HYPEUSDT': 28    // HYPE around $28
     };
     
-    candleArray[candleArray.length - 1] = updatedCandle;
+    const basePrice = fallbackPrices[symbol] || 100;
     
-    console.log(`🎭 Mock price update for ${symbol}: $${newPrice.toFixed(4)}`);
-    
-    // Notify subscribers
-    this.notifySubscribers(key, candleArray);
+    if (isInitialFetch) {
+      // Generate realistic historical data anchored to fallback price
+      this.generateHistoricalData(symbol, basePrice, key);
+      console.log(`🎭 Generated mock data for ${symbol} anchored to $${basePrice.toFixed(2)}`);
+    } else {
+      // Update existing data with small realistic change
+      const candleArray = this.candleData.get(key) || [];
+      if (candleArray.length === 0) return;
+      
+      const lastCandle = candleArray[candleArray.length - 1];
+      const volatility = Math.random() * 0.008 - 0.004; // ±0.4%
+      const newPrice = lastCandle.close * (1 + volatility);
+      
+      const updatedCandle = {
+        ...lastCandle,
+        close: newPrice,
+        high: Math.max(lastCandle.high, newPrice),
+        low: Math.min(lastCandle.low, newPrice),
+        timestamp: new Date().toISOString(),
+        time: new Date().toLocaleTimeString('en-US', { 
+          hour12: false, 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })
+      };
+      
+      candleArray[candleArray.length - 1] = updatedCandle;
+      
+      console.log(`🎭 Mock price update for ${symbol}: $${newPrice.toFixed(4)}`);
+      
+      // Notify subscribers
+      this.notifySubscribers(key, candleArray);
+    }
   }
 
   // Notify all subscribers
