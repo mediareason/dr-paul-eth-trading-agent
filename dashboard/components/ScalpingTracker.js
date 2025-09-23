@@ -17,7 +17,7 @@ const ScalpingTracker = () => {
   const unsubscribeRef = useRef(null);
   const signalHistoryRef = useRef([]);
 
-  // Calculate moving averages (only if we have enough real data)
+  // Calculate moving averages (adaptive to available data)
   const calculateEMA = (data, period) => {
     if (data.length < period) return data.map(() => null);
     
@@ -44,14 +44,16 @@ const ScalpingTracker = () => {
     });
   };
 
-  // Detect entry signals (only with sufficient real data)
+  // Detect entry signals (adaptive to available data)
   const detectEntrySignals = (data, ema9, sma21, sma200) => {
     const signals = [];
     const latest = data.length - 1;
     
-    // Need at least 200 periods for proper 200 MA and signal detection
-    if (latest < 200) {
-      console.log(`⚠️ Insufficient data for signals: ${data.length} candles (need 200+)`);
+    // Adaptive signal detection - work with whatever data we have
+    const minDataForSignals = Math.min(25, data.length - 1); // Need at least 25 candles OR use all available
+    
+    if (latest < minDataForSignals || latest < 21) {
+      console.log(`⚠️ Need more data for reliable signals: ${data.length} candles (working with available data)`);
       return signals;
     }
     
@@ -63,19 +65,32 @@ const ScalpingTracker = () => {
     const prevSMA21 = sma21[latest - 1];
     const sma200Current = sma200[latest];
     
+    // Skip null values
+    if (!currentEMA9 || !prevEMA9 || !currentSMA21 || !prevSMA21) {
+      return signals;
+    }
+    
     // Check for new signals (avoid duplicates)
     const currentTime = data[latest].timestamp;
     const recentSignals = signalHistoryRef.current.filter(
       s => new Date(currentTime) - new Date(s.timestamp) < 300000 // 5 minutes
     );
     
-    // Bullish signals
+    // Bullish signals - EMA/MA crossover
     if (currentEMA9 > prevEMA9 && prevEMA9 <= prevSMA21 && currentEMA9 > currentSMA21) {
       const hasRecentLong = recentSignals.some(s => s.type.includes('LONG'));
       if (!hasRecentLong) {
+        // Determine signal strength based on available indicators
+        let strength = 'MEDIUM';
+        if (sma200Current && currentPrice > sma200Current) {
+          strength = 'STRONG'; // Price above 200 MA
+        } else if (data.length < 200) {
+          strength = 'DEVELOPING'; // Not enough data for 200 MA
+        }
+        
         const signal = {
           type: 'LONG',
-          strength: currentPrice > sma200Current ? 'STRONG' : 'MEDIUM',
+          strength: strength,
           reason: '9 EMA crossed above 21 MA',
           price: currentPrice,
           timestamp: currentTime,
@@ -87,13 +102,20 @@ const ScalpingTracker = () => {
       }
     }
     
-    // Bearish signals
+    // Bearish signals - EMA/MA crossover
     if (currentEMA9 < prevEMA9 && prevEMA9 >= prevSMA21 && currentEMA9 < currentSMA21) {
       const hasRecentShort = recentSignals.some(s => s.type.includes('SHORT'));
       if (!hasRecentShort) {
+        let strength = 'MEDIUM';
+        if (sma200Current && currentPrice < sma200Current) {
+          strength = 'STRONG'; // Price below 200 MA
+        } else if (data.length < 200) {
+          strength = 'DEVELOPING'; // Not enough data for 200 MA
+        }
+        
         const signal = {
           type: 'SHORT',
-          strength: currentPrice < sma200Current ? 'STRONG' : 'MEDIUM',
+          strength: strength,
           reason: '9 EMA crossed below 21 MA',
           price: currentPrice,
           timestamp: currentTime,
@@ -116,10 +138,11 @@ const ScalpingTracker = () => {
   useEffect(() => {
     setConnectionStatus('CONNECTING');
     setConnectionError(null);
+    console.log(`🔄 ScalpingTracker connecting to ${symbol}...`);
     
     // Subscribe to real-time data
     const unsubscribe = cryptoDataService.subscribe(symbol, timeframe, (candleData) => {
-      console.log(`📊 Received ${candleData.length} candles for ${symbol}`);
+      console.log(`📊 ScalpingTracker received ${candleData.length} candles for ${symbol}`);
       
       if (!candleData || candleData.length === 0) {
         setConnectionError(`No data available for ${symbol}`);
@@ -128,26 +151,22 @@ const ScalpingTracker = () => {
         return;
       }
       
-      // Check for any connection errors
-      const error = cryptoDataService.getConnectionError(symbol, timeframe);
-      if (error) {
-        setConnectionError(error);
-        setConnectionStatus('ERROR');
-      } else {
-        setConnectionError(null);
-        setConnectionStatus('CONNECTED');
-      }
-      
-      // Only proceed with analysis if we have sufficient real data
-      if (candleData.length < 9) {
-        console.log(`⚠️ Insufficient data for analysis: ${candleData.length} candles`);
+      // Much more lenient data requirements
+      if (candleData.length < 3) {
+        console.log(`⚠️ Very limited data: ${candleData.length} candles - showing basic info only`);
         setPriceData(candleData);
         setCurrentPrice(candleData[candleData.length - 1]?.close || 0);
         setLastUpdate(new Date());
+        setConnectionStatus('CONNECTED');
+        setConnectionError(null);
         return;
       }
       
-      // Calculate moving averages
+      console.log(`✅ ScalpingTracker processing ${candleData.length} candles`);
+      setConnectionError(null);
+      setConnectionStatus('CONNECTED');
+      
+      // Calculate moving averages (adaptive)
       const ema9 = calculateEMA(candleData, 9);
       const sma21 = calculateSMA(candleData, 21);
       const sma200 = calculateSMA(candleData, 200);
@@ -174,9 +193,10 @@ const ScalpingTracker = () => {
       
       setLastUpdate(new Date());
       
-      // Detect new signals only if we have enough data
+      // Detect new signals with available data
       const newSignals = detectEntrySignals(candleData, ema9, sma21, sma200);
       if (newSignals.length > 0) {
+        console.log(`🎯 New ${newSignals[0].type} signal for ${symbol} at $${newSignals[0].price.toFixed(4)}`);
         setSignals(prevSignals => [...newSignals, ...prevSignals.slice(0, 4)]); // Keep last 5 signals
       }
     });
@@ -252,7 +272,7 @@ const ScalpingTracker = () => {
       case 'CONNECTED':
         return {
           icon: <Wifi className="w-5 h-5 text-green-500" />,
-          text: 'Connected to Live Data',
+          text: `Connected • ${priceData.length} data points`,
           className: 'text-green-600'
         };
       case 'ERROR':
@@ -286,7 +306,7 @@ const ScalpingTracker = () => {
             </span>
           </div>
         </div>
-        <p className="text-gray-600">Real-time scalping signals • LIVE DATA ONLY • Professional moving average analysis</p>
+        <p className="text-gray-600">Real-time scalping signals • Adaptive data analysis • Professional moving averages</p>
       </div>
 
       {/* Error Display */}
@@ -298,8 +318,25 @@ const ScalpingTracker = () => {
           </div>
           <p className="text-red-700 mt-1">{connectionError}</p>
           <p className="text-red-600 text-sm mt-2">
-            This application only uses real market data. Please check your internet connection or try a different symbol.
+            Please check your connection or try a different symbol.
           </p>
+        </div>
+      )}
+
+      {/* Data Status */}
+      {connectionStatus === 'CONNECTED' && priceData.length > 0 && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
+            <span className="font-semibold text-blue-800">Data Status</span>
+          </div>
+          <div className="text-blue-700 text-sm mt-1">
+            Working with {priceData.length} data points • 
+            {priceData.length >= 200 ? ' Full analysis available' : 
+             priceData.length >= 21 ? ' Medium-term signals available' :
+             priceData.length >= 9 ? ' Short-term signals available' :
+             ' Basic price tracking only'}
+          </div>
         </div>
       )}
 
@@ -356,13 +393,13 @@ const ScalpingTracker = () => {
         </div>
       </div>
 
-      {/* Market Overview */}
+      {/* Market Overview - Adaptive to data available */}
       {connectionStatus === 'CONNECTED' && priceData.length >= 9 && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
             <div className="text-sm text-gray-600 mb-1">9 Period EMA</div>
             <div className="text-lg font-semibold text-blue-600">
-              ${latestData?.ema9?.toFixed(4) || 'Calculating...'}
+              {latestData?.ema9 ? `$${latestData.ema9.toFixed(4)}` : 'Calculating...'}
             </div>
             <div className="text-xs text-gray-500">Fast trend indicator</div>
           </div>
@@ -370,7 +407,8 @@ const ScalpingTracker = () => {
           <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-orange-500">
             <div className="text-sm text-gray-600 mb-1">21 Period MA</div>
             <div className="text-lg font-semibold text-orange-600">
-              ${latestData?.sma21?.toFixed(4) || 'Need 21+ candles'}
+              {latestData?.sma21 ? `$${latestData.sma21.toFixed(4)}` : 
+               priceData.length >= 21 ? 'Calculating...' : `Need ${21 - priceData.length}+ more`}
             </div>
             <div className="text-xs text-gray-500">Medium trend filter</div>
           </div>
@@ -378,7 +416,8 @@ const ScalpingTracker = () => {
           <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
             <div className="text-sm text-gray-600 mb-1">200 Period MA</div>
             <div className="text-lg font-semibold text-purple-600">
-              ${latestData?.sma200?.toFixed(4) || 'Need 200+ candles'}
+              {latestData?.sma200 ? `$${latestData.sma200.toFixed(4)}` : 
+               priceData.length >= 200 ? 'Calculating...' : `Need ${200 - priceData.length}+ more`}
             </div>
             <div className="text-xs text-gray-500">Long-term trend</div>
           </div>
@@ -394,12 +433,12 @@ const ScalpingTracker = () => {
         </div>
       )}
 
-      {/* Chart */}
+      {/* Chart - Adaptive */}
       {connectionStatus === 'CONNECTED' && priceData.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <BarChart3 className="w-5 h-5" />
-            Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe • Real Market Data
+            Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe • {priceData.length} Data Points
           </h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -461,14 +500,14 @@ const ScalpingTracker = () => {
         </div>
       )}
 
-      {/* Entry Signals */}
+      {/* Entry Signals - Adaptive */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Target className="w-5 h-5" />
           Recent {getDisplaySymbol(symbol)} Entry Signals ({signals.length} active)
         </h3>
         
-        {connectionStatus === 'CONNECTED' && priceData.length >= 200 ? (
+        {connectionStatus === 'CONNECTED' && priceData.length >= 21 ? (
           signals.length > 0 ? (
             <div className="space-y-3">
               {signals.map((signal, index) => (
@@ -483,7 +522,9 @@ const ScalpingTracker = () => {
                         <div className="font-semibold flex items-center gap-2">
                           {signal.type.replace('_', ' ')} {getDisplaySymbol(symbol)}
                           <span className={`px-2 py-1 text-xs rounded-full ${
-                            signal.strength === 'STRONG' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                            signal.strength === 'STRONG' ? 'bg-green-100 text-green-800' :
+                            signal.strength === 'DEVELOPING' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-blue-100 text-blue-800'
                           }`}>
                             {signal.strength}
                           </span>
@@ -511,7 +552,7 @@ const ScalpingTracker = () => {
             <div className="text-center py-8 text-gray-500">
               <AlertTriangle className="w-12 h-12 mx-auto mb-2 opacity-50" />
               <div className="font-medium">No recent {getDisplaySymbol(symbol)} entry signals</div>
-              <div className="text-sm">Monitoring real market data for favorable scalping conditions...</div>
+              <div className="text-sm">Monitoring market data for favorable scalping conditions...</div>
             </div>
           )
         ) : (
@@ -522,8 +563,8 @@ const ScalpingTracker = () => {
             </div>
             <div className="text-sm">
               {connectionStatus === 'ERROR' 
-                ? 'Cannot generate signals without real market data.' 
-                : `Need 200+ data points for signals (have ${priceData.length})`
+                ? 'Cannot generate signals without market data.' 
+                : `Need 21+ data points for signals (have ${priceData.length})`
               }
             </div>
           </div>
@@ -534,32 +575,32 @@ const ScalpingTracker = () => {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
         <h4 className="font-semibold mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" />
-          Live Scalping Strategy • REAL DATA ONLY • CoinGecko API
+          Adaptive Scalping Strategy • Works with Available Data
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
             <strong className="text-green-700">Long Entry Conditions:</strong>
             <ul className="list-disc list-inside mt-2 space-y-1">
               <li>9 EMA crosses above 21 MA (momentum shift)</li>
-              <li>Price above 200 MA = strong trend confirmation</li>
+              <li>Price above 200 MA = STRONG | Limited data = DEVELOPING</li>
               <li>Risk: 0.5% | Target: 1.5% (3:1 reward/risk)</li>
-              <li>Requires 200+ real data points for signal generation</li>
+              <li>Adaptive analysis works with 21+ data points</li>
             </ul>
           </div>
           <div>
             <strong className="text-red-700">Short Entry Conditions:</strong>
             <ul className="list-disc list-inside mt-2 space-y-1">
               <li>9 EMA crosses below 21 MA (momentum shift)</li>
-              <li>Price below 200 MA = strong trend confirmation</li>
+              <li>Price below 200 MA = STRONG | Limited data = DEVELOPING</li>
               <li>Risk: 0.5% | Target: 1.5% (3:1 reward/risk)</li>
               <li>Real market volatility analysis included</li>
             </ul>
           </div>
         </div>
         <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-          <strong className="text-blue-800">🚀 Live Data Only:</strong>
+          <strong className="text-blue-800">📊 Adaptive Analysis:</strong>
           <span className="text-blue-700 text-sm ml-2">
-            This application uses ONLY real market data from CoinGecko. No simulated or demo data is ever used.
+            This tracker adapts to available data - shows basic info with limited data, full analysis with 200+ points.
           </span>
         </div>
       </div>
