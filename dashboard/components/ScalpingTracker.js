@@ -244,6 +244,22 @@ const ScalpingTracker = () => {
     }
   };
 
+  // Get display symbol name
+  const getDisplaySymbol = (symbol) => {
+    const symbolMap = {
+      'ETHUSDT': 'ETH',
+      'BTCUSDT': 'BTC', 
+      'SOLUSDT': 'SOL',
+      'ADAUSDT': 'ADA',
+      'AVAXUSDT': 'AVAX',
+      'LINKUSDT': 'LINK',
+      'DOTUSDT': 'DOT',
+      'ASTERUSDT': 'ASTER',
+      'HYPEUSDT': 'HYPE'
+    };
+    return symbolMap[symbol] || symbol.replace('USDT', '');
+  };
+
   const latestData = priceData[priceData.length - 1];
   const trendDirection = latestData && latestData.ema9 > latestData.sma21 ? 'UP' : 'DOWN';
   const recentChange = priceData.length > 1 ? 
@@ -263,7 +279,7 @@ const ScalpingTracker = () => {
             </span>
           </div>
         </div>
-        <p className="text-gray-600">Real-time scalping signals from Binance WebSocket feeds</p>
+        <p className="text-gray-600">Real-time scalping signals from Binance WebSocket feeds • Now with ASTER & HYPE support</p>
       </div>
 
       {/* Controls */}
@@ -282,6 +298,8 @@ const ScalpingTracker = () => {
             <option value="AVAXUSDT">AVAX/USDT</option>
             <option value="LINKUSDT">LINK/USDT</option>
             <option value="DOTUSDT">DOT/USDT</option>
+            <option value="ASTERUSDT">ASTER/USDT</option>
+            <option value="HYPEUSDT">HYPE/USDT</option>
           </select>
         </div>
         
@@ -300,7 +318,7 @@ const ScalpingTracker = () => {
         </div>
 
         <div className="bg-white p-4 rounded-lg shadow-sm">
-          <div className="text-sm text-gray-600 mb-1">Current Price</div>
+          <div className="text-sm text-gray-600 mb-1">{getDisplaySymbol(symbol)} Price</div>
           <div className="text-xl font-bold text-gray-900">${currentPrice.toLocaleString()}</div>
           <div className={`text-sm ${recentChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {recentChange >= 0 ? '+' : ''}{recentChange.toFixed(3)}%
@@ -323,7 +341,7 @@ const ScalpingTracker = () => {
         <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
           <div className="text-sm text-gray-600 mb-1">9 Period EMA</div>
           <div className="text-lg font-semibold text-blue-600">
-            ${latestData?.ema9?.toFixed(2) || 'Loading...'}
+            ${latestData?.ema9?.toFixed(4) || 'Loading...'}
           </div>
           <div className="text-xs text-gray-500">Fast trend indicator</div>
         </div>
@@ -331,7 +349,7 @@ const ScalpingTracker = () => {
         <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-orange-500">
           <div className="text-sm text-gray-600 mb-1">21 Period MA</div>
           <div className="text-lg font-semibold text-orange-600">
-            ${latestData?.sma21?.toFixed(2) || 'Loading...'}
+            ${latestData?.sma21?.toFixed(4) || 'Loading...'}
           </div>
           <div className="text-xs text-gray-500">Medium trend filter</div>
         </div>
@@ -339,7 +357,7 @@ const ScalpingTracker = () => {
         <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
           <div className="text-sm text-gray-600 mb-1">200 Period MA</div>
           <div className="text-lg font-semibold text-purple-600">
-            ${latestData?.sma200?.toFixed(2) || 'Loading...'}
+            ${latestData?.sma200?.toFixed(4) || 'Loading...'}
           </div>
           <div className="text-xs text-gray-500">Long-term trend</div>
         </div>
@@ -357,7 +375,7 @@ const ScalpingTracker = () => {
       {/* Chart */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          📈 Live Price Chart with Moving Averages
+          📈 Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe
         </h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
@@ -372,8 +390,8 @@ const ScalpingTracker = () => {
               <YAxis 
                 stroke="#666"
                 fontSize={12}
-                domain={['dataMin - 10', 'dataMax + 10']}
-                tickFormatter={(value) => `$${value.toFixed(0)}`}
+                domain={['dataMin - 0.01', 'dataMax + 0.01']}
+                tickFormatter={(value) => `$${value.toFixed(currentPrice < 1 ? 4 : 2)}`}
               />
               <Line 
                 type="monotone" 
@@ -416,7 +434,7 @@ const ScalpingTracker = () => {
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Target className="w-5 h-5" />
-          Recent Entry Signals ({signals.length} active)
+          Recent {getDisplaySymbol(symbol)} Entry Signals ({signals.length} active)
         </h3>
         
         {signals.length > 0 ? (
@@ -431,7 +449,7 @@ const ScalpingTracker = () => {
                     {getSignalIcon(signal.type)}
                     <div>
                       <div className="font-semibold flex items-center gap-2">
-                        {signal.type.replace('_', ' ')} 
+                        {signal.type.replace('_', ' ')} {getDisplaySymbol(symbol)}
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           signal.strength === 'STRONG' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                         }`}>
@@ -442,14 +460,14 @@ const ScalpingTracker = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold">${signal.price.toFixed(2)}</div>
+                    <div className="font-semibold">${signal.price.toFixed(currentPrice < 1 ? 4 : 2)}</div>
                     <div className="text-xs opacity-60">
                       {new Date(signal.timestamp).toLocaleTimeString()}
                     </div>
                     {signal.stopLoss && (
                       <div className="text-xs mt-1 space-y-0.5">
-                        <div className="text-red-600">SL: ${signal.stopLoss.toFixed(2)}</div>
-                        <div className="text-green-600">TP: ${signal.takeProfit.toFixed(2)}</div>
+                        <div className="text-red-600">SL: ${signal.stopLoss.toFixed(currentPrice < 1 ? 4 : 2)}</div>
+                        <div className="text-green-600">TP: ${signal.takeProfit.toFixed(currentPrice < 1 ? 4 : 2)}</div>
                       </div>
                     )}
                   </div>
@@ -460,7 +478,7 @@ const ScalpingTracker = () => {
         ) : (
           <div className="text-center py-8 text-gray-500">
             <AlertTriangle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <div className="font-medium">No recent entry signals</div>
+            <div className="font-medium">No recent {getDisplaySymbol(symbol)} entry signals</div>
             <div className="text-sm">Monitoring for favorable scalping conditions...</div>
             {!isConnected && (
               <div className="text-sm text-red-500 mt-2">
@@ -475,7 +493,7 @@ const ScalpingTracker = () => {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
         <h4 className="font-semibold mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" />
-          Live Scalping Strategy - Binance Data Feed
+          Live Scalping Strategy • Binance Data Feed • Now Supporting ASTER & HYPE
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
@@ -498,9 +516,9 @@ const ScalpingTracker = () => {
           </div>
         </div>
         <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-          <strong className="text-blue-800">📡 Live Data:</strong>
+          <strong className="text-blue-800">🚀 New Tokens Added:</strong>
           <span className="text-blue-700 text-sm ml-2">
-            Connected to Binance WebSocket API • Real-time candlestick data • Automatic reconnection • 200 candle history
+            ASTER & HYPE now available • Perfect for scalping volatile altcoins • Real-time feeds from Binance WebSocket API
           </span>
         </div>
       </div>
