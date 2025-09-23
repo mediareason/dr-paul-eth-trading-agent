@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, AlertTriangle, Target, Zap, DollarSign, Wifi, WifiOff, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Target, Zap, DollarSign, Wifi, WifiOff, BarChart3, Play } from 'lucide-react';
 import cryptoDataService from '../lib/cryptoDataService';
 
 const ScalpingTracker = () => {
@@ -13,6 +13,7 @@ const ScalpingTracker = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Connecting...');
   const [priceChange24h, setPriceChange24h] = useState(0);
+  const [usingMockData, setUsingMockData] = useState(false);
   
   const unsubscribeRef = useRef(null);
   const signalHistoryRef = useRef([]);
@@ -195,7 +196,16 @@ const ScalpingTracker = () => {
         // Update connection status
         const isConnectedNow = cryptoDataService.getConnectionStatus(symbol, timeframe);
         setIsConnected(isConnectedNow);
-        setConnectionStatus(isConnectedNow ? 'Connected to Binance' : 'Connection lost');
+        
+        // Check if using mock data
+        const isMock = cryptoDataService.useMockData || cryptoDataService.mockIntervals.has(`${symbol}_${timeframe}`);
+        setUsingMockData(isMock);
+        
+        if (isMock) {
+          setConnectionStatus('Demo Mode - Using Simulated Data');
+        } else {
+          setConnectionStatus(isConnectedNow ? 'Connected to Binance' : 'Connection lost');
+        }
       }
     });
     
@@ -272,14 +282,37 @@ const ScalpingTracker = () => {
           <Zap className="w-8 h-8 text-yellow-500" />
           <h1 className="text-3xl font-bold text-gray-900">Scalping Entry Tracker</h1>
           <div className="flex items-center gap-2">
-            {isConnected ? <Wifi className="w-5 h-5 text-green-500" /> : <WifiOff className="w-5 h-5 text-red-500" />}
-            <span className={`text-sm ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+            {usingMockData ? 
+              <Play className="w-5 h-5 text-blue-500" /> : 
+              (isConnected ? <Wifi className="w-5 h-5 text-green-500" /> : <WifiOff className="w-5 h-5 text-red-500" />)
+            }
+            <span className={`text-sm ${usingMockData ? 'text-blue-600' : (isConnected ? 'text-green-600' : 'text-red-600')}`}>
               {connectionStatus}
             </span>
           </div>
         </div>
-        <p className="text-gray-600">Real-time scalping signals from Binance WebSocket feeds • Curated symbols for active trading</p>
+        <p className="text-gray-600">
+          {usingMockData ? 
+            'Demo mode with realistic simulated data • All features fully functional' :
+            'Real-time scalping signals from Binance WebSocket feeds • Curated symbols for active trading'
+          }
+        </p>
       </div>
+
+      {/* Demo Mode Alert */}
+      {usingMockData && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Play className="w-5 h-5 text-blue-600" />
+            <div>
+              <div className="font-semibold text-blue-800">Demo Mode Active</div>
+              <div className="text-sm text-blue-700">
+                Using simulated market data due to network restrictions. All trading signals and features work identically to live data.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -374,7 +407,7 @@ const ScalpingTracker = () => {
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <BarChart3 className="w-5 h-5" />
-          Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe
+          {usingMockData ? '🎭 Demo' : '📈 Live'} {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe
         </h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
@@ -479,7 +512,7 @@ const ScalpingTracker = () => {
             <AlertTriangle className="w-12 h-12 mx-auto mb-2 opacity-50" />
             <div className="font-medium">No recent {getDisplaySymbol(symbol)} entry signals</div>
             <div className="text-sm">Monitoring for favorable scalping conditions...</div>
-            {!isConnected && (
+            {!isConnected && !usingMockData && (
               <div className="text-sm text-red-500 mt-2">
                 ⚠️ Check internet connection - WebSocket disconnected
               </div>
@@ -492,7 +525,7 @@ const ScalpingTracker = () => {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
         <h4 className="font-semibold mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" />
-          Live Scalping Strategy • Curated Symbol List • Professional Trading Tools
+          Live Scalping Strategy • {usingMockData ? 'Demo Mode' : 'Binance Data Feed'} • Professional Trading Tools
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
@@ -515,9 +548,14 @@ const ScalpingTracker = () => {
           </div>
         </div>
         <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-          <strong className="text-blue-800">🎯 Active Symbols:</strong>
+          <strong className="text-blue-800">
+            {usingMockData ? '🎭 Demo Mode:' : '🎯 Active Symbols:'}
+          </strong>
           <span className="text-blue-700 text-sm ml-2">
-            ETH • BTC • SOL • AVAX • LINK • DOT • ASTER • HYPE • Removed ADA per trading preferences
+            {usingMockData ? 
+              'Realistic simulated data • Perfect for learning and testing strategies • Switch to live data when network allows' :
+              'ETH • BTC • SOL • AVAX • LINK • DOT • ASTER • HYPE • Real-time Binance WebSocket feeds'
+            }
           </span>
         </div>
       </div>
