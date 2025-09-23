@@ -28,7 +28,7 @@ class CryptoDataService {
     
     // Return historical data if available
     const historical = this.candleData.get(key);
-    if (historical.length > 0) {
+    if (historical && historical.length > 0) {
       callback(historical);
     }
     
@@ -152,6 +152,11 @@ class CryptoDataService {
       const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceTimeframe}&limit=${limit}`;
       
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
       
       if (Array.isArray(data)) {
@@ -186,6 +191,7 @@ class CryptoDataService {
       }
     } catch (error) {
       console.error(`Failed to fetch historical data for ${key}:`, error);
+      // If historical data fails, still try to establish WebSocket connection
     }
   }
 
@@ -250,7 +256,7 @@ class CryptoDataService {
   getCurrentPrice(symbol) {
     // Find any timeframe data for this symbol
     for (const [key, candles] of this.candleData) {
-      if (key.startsWith(symbol + '_') && candles.length > 0) {
+      if (key.startsWith(symbol + '_') && candles && candles.length > 0) {
         return candles[candles.length - 1].close;
       }
     }
