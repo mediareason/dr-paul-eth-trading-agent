@@ -250,7 +250,6 @@ const ScalpingTracker = () => {
       'ETHUSDT': 'ETH',
       'BTCUSDT': 'BTC', 
       'SOLUSDT': 'SOL',
-      'ADAUSDT': 'ADA',
       'AVAXUSDT': 'AVAX',
       'LINKUSDT': 'LINK',
       'DOTUSDT': 'DOT',
@@ -279,7 +278,7 @@ const ScalpingTracker = () => {
             </span>
           </div>
         </div>
-        <p className="text-gray-600">Real-time scalping signals from Binance WebSocket feeds • Now with ASTER & HYPE support</p>
+        <p className="text-gray-600">Real-time scalping signals from Binance WebSocket feeds • Curated symbols for active trading</p>
       </div>
 
       {/* Controls */}
@@ -294,7 +293,6 @@ const ScalpingTracker = () => {
             <option value="ETHUSDT">ETH/USDT</option>
             <option value="BTCUSDT">BTC/USDT</option>
             <option value="SOLUSDT">SOL/USDT</option>
-            <option value="ADAUSDT">ADA/USDT</option>
             <option value="AVAXUSDT">AVAX/USDT</option>
             <option value="LINKUSDT">LINK/USDT</option>
             <option value="DOTUSDT">DOT/USDT</option>
@@ -493,7 +491,7 @@ const ScalpingTracker = () => {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
         <h4 className="font-semibold mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" />
-          Live Scalping Strategy • Binance Data Feed • Now Supporting ASTER & HYPE
+          Live Scalping Strategy • Curated Symbol List • Professional Trading Tools
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
@@ -516,9 +514,9 @@ const ScalpingTracker = () => {
           </div>
         </div>
         <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-          <strong className="text-blue-800">🚀 New Tokens Added:</strong>
+          <strong className="text-blue-800">🎯 Active Symbols:</strong>
           <span className="text-blue-700 text-sm ml-2">
-            ASTER & HYPE now available • Perfect for scalping volatile altcoins • Real-time feeds from Binance WebSocket API
+            ETH • BTC • SOL • AVAX • LINK • DOT • ASTER • HYPE • Removed ADA per trading preferences
           </span>
         </div>
       </div>
