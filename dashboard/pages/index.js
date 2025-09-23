@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import DrPaulLiveDashboard from '../components/DrPaulDashboard';
 import InteractiveBacktester from '../components/InteractiveBacktester';
-import { BarChart3, TestTube, Activity, Brain } from 'lucide-react';
+import ScalpingTracker from '../components/ScalpingTracker';
+import { BarChart3, TestTube, Activity, Brain, Zap } from 'lucide-react';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('live');
@@ -18,6 +19,12 @@ export default function Home() {
       name: 'Interactive Backtest',
       icon: TestTube,
       description: 'Step-by-step visualization of trading strategy'
+    },
+    {
+      id: 'scalping',
+      name: 'Scalping Tracker',
+      icon: Zap,
+      description: 'Fast scalping signals with 9 EMA, 21 MA & 200 MA crossovers'
     }
   ];
 
@@ -36,7 +43,7 @@ export default function Home() {
             </div>
             
             {/* Tab Navigation */}
-            <nav className="flex space-x-8">
+            <nav className="flex space-x-4">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
@@ -70,6 +77,7 @@ export default function Home() {
       <div className="flex-1">
         {activeTab === 'live' && <DrPaulLiveDashboard />}
         {activeTab === 'backtest' && <InteractiveBacktester />}
+        {activeTab === 'scalping' && <ScalpingTracker />}
       </div>
     </div>
   );
