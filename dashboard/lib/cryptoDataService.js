@@ -1,23 +1,18 @@
-// Real-time WebSocket data service with fallback to mock data
+// CoinGecko-based data service (same approach as Dr. Paul app)
 class CryptoDataService {
   constructor() {
-    this.connections = new Map();
     this.subscribers = new Map();
-    this.lastPrices = new Map();
     this.candleData = new Map();
-    this.reconnectAttempts = new Map();
-    this.maxReconnectAttempts = 3; // Reduced to fail faster
-    this.reconnectDelay = 1000;
-    this.useMockData = false; // Will switch to true if real connections fail
-    this.mockIntervals = new Map(); // For mock data updates
+    this.updateIntervals = new Map();
+    this.lastPrices = new Map();
     
-    console.log('🚀 CryptoDataService initialized');
+    console.log('🚀 CryptoDataService initialized with CoinGecko API');
   }
 
   // Subscribe to real-time data for a symbol
   subscribe(symbol, timeframe, callback) {
     const key = `${symbol}_${timeframe}`;
-    console.log(`📡 Subscribing to ${key}`);
+    console.log(`📡 Subscribing to ${key} using CoinGecko API`);
     
     if (!this.subscribers.has(key)) {
       this.subscribers.set(key, new Set());
@@ -26,15 +21,9 @@ class CryptoDataService {
     
     this.subscribers.get(key).add(callback);
     
-    // Start connection (real or mock)
-    if (!this.connections.has(key) && !this.mockIntervals.has(key)) {
-      if (this.useMockData) {
-        console.log(`🎭 Starting mock data for ${key}`);
-        this.startMockData(symbol, timeframe, key);
-      } else {
-        console.log(`🔌 Attempting real connection for ${key}`);
-        this.connectToExchange(symbol, timeframe, key);
-      }
+    // Start data updates if not already running
+    if (!this.updateIntervals.has(key)) {
+      this.startDataUpdates(symbol, timeframe, key);
     }
     
     // Return historical data if available
@@ -49,17 +38,37 @@ class CryptoDataService {
       console.log(`🔌 Unsubscribing from ${key}`);
       this.subscribers.get(key)?.delete(callback);
       if (this.subscribers.get(key)?.size === 0) {
-        this.disconnect(key);
+        this.stopDataUpdates(key);
       }
     };
   }
 
-  // Generate realistic mock data
-  generateMockCandles(symbol, count = 200) {
-    const candles = [];
-    const now = new Date();
+  // Start periodic data updates using CoinGecko API
+  startDataUpdates(symbol, timeframe, key) {
+    console.log(`🔄 Starting CoinGecko data updates for ${key}`);
     
-    // Base prices for different symbols
+    // Generate initial historical data
+    this.generateInitialData(symbol, key);
+    
+    // Fetch real price immediately
+    this.fetchRealPrice(symbol, key);
+    
+    // Set up periodic updates (every 10 seconds)
+    const interval = setInterval(() => {
+      if (!this.subscribers.get(key) || this.subscribers.get(key).size === 0) {
+        clearInterval(interval);
+        this.updateIntervals.delete(key);
+        return;
+      }
+      
+      this.fetchRealPrice(symbol, key);
+    }, 10000); // Update every 10 seconds
+    
+    this.updateIntervals.set(key, interval);
+  }
+
+  // Generate initial realistic data
+  generateInitialData(symbol, key) {
     const basePrices = {
       'ETHUSDT': 3400,
       'BTCUSDT': 67000,
@@ -72,16 +81,17 @@ class CryptoDataService {
     };
     
     let price = basePrices[symbol] || 100;
+    const candles = [];
+    const now = new Date();
     
-    for (let i = count - 1; i >= 0; i--) {
+    // Generate 200 historical candles
+    for (let i = 199; i >= 0; i--) {
       const timestamp = new Date(now.getTime() - i * 60000); // 1 minute intervals
       
-      // Add some realistic price movement
+      // Add realistic price movement
       const volatility = Math.random() * 0.02 - 0.01; // ±1%
       price = price * (1 + volatility);
-      
-      // Ensure price doesn't go negative
-      price = Math.max(price, 0.001);
+      price = Math.max(price, 0.001); // Ensure positive price
       
       const candle = {
         timestamp: timestamp.toISOString(),
@@ -91,8 +101,8 @@ class CryptoDataService {
           minute: '2-digit' 
         }),
         open: price,
-        high: price * (1 + Math.random() * 0.005),
-        low: price * (1 - Math.random() * 0.005),
+        high: price * (1 + Math.random() * 0.01),
+        low: price * (1 - Math.random() * 0.01),
         close: price,
         volume: Math.random() * 1000000,
         isComplete: true
@@ -101,291 +111,123 @@ class CryptoDataService {
       candles.push(candle);
     }
     
-    return candles;
+    this.candleData.set(key, candles);
+    console.log(`📚 Generated ${candles.length} initial candles for ${key}`);
+    
+    // Notify subscribers
+    this.notifySubscribers(key, candles);
   }
 
-  // Start mock data simulation
-  startMockData(symbol, timeframe, key) {
-    console.log(`🎭 Starting mock data simulation for ${key}`);
-    
-    // Generate initial historical data
-    const mockCandles = this.generateMockCandles(symbol);
-    this.candleData.set(key, mockCandles);
-    
-    // Notify subscribers with initial data
-    const callbacks = this.subscribers.get(key);
-    if (callbacks) {
-      callbacks.forEach(callback => {
-        try {
-          callback([...mockCandles]);
-        } catch (error) {
-          console.error('❌ Error in subscriber callback:', error);
-        }
-      });
-    }
-    
-    // Start live updates every 2 seconds
-    const interval = setInterval(() => {
-      if (!this.subscribers.get(key) || this.subscribers.get(key).size === 0) {
-        clearInterval(interval);
-        this.mockIntervals.delete(key);
+  // Fetch real price from CoinGecko (same as Dr. Paul app)
+  async fetchRealPrice(symbol, key) {
+    try {
+      // Map trading symbols to CoinGecko IDs
+      const coinGeckoIds = {
+        'ETHUSDT': 'ethereum',
+        'BTCUSDT': 'bitcoin',
+        'SOLUSDT': 'solana',
+        'AVAXUSDT': 'avalanche-2',
+        'LINKUSDT': 'chainlink',
+        'DOTUSDT': 'polkadot',
+        'ASTERUSDT': 'astar', // Best match for ASTER
+        'HYPEUSDT': 'hyperliquid' // Check if this ID exists
+      };
+      
+      const coinId = coinGeckoIds[symbol];
+      if (!coinId) {
+        console.log(`⚠️ No CoinGecko ID for ${symbol}, using mock data`);
+        this.updateWithMockPrice(symbol, key);
         return;
       }
       
-      const candleArray = this.candleData.get(key) || [];
-      if (candleArray.length === 0) return;
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
+      console.log(`🌐 Fetching from CoinGecko: ${url}`);
       
-      // Update last candle with new price
-      const lastCandle = candleArray[candleArray.length - 1];
-      const volatility = Math.random() * 0.008 - 0.004; // ±0.4%
-      const newPrice = lastCandle.close * (1 + volatility);
-      
-      const updatedCandle = {
-        ...lastCandle,
-        close: newPrice,
-        high: Math.max(lastCandle.high, newPrice),
-        low: Math.min(lastCandle.low, newPrice),
-        timestamp: new Date().toISOString(),
-        time: new Date().toLocaleTimeString('en-US', { 
-          hour12: false, 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })
-      };
-      
-      // Update the last candle
-      candleArray[candleArray.length - 1] = updatedCandle;
-      
-      console.log(`📈 Mock price update for ${key}: $${newPrice.toFixed(4)}`);
-      
-      // Notify subscribers
-      const callbacks = this.subscribers.get(key);
-      if (callbacks) {
-        callbacks.forEach(callback => {
-          try {
-            callback([...candleArray]);
-          } catch (error) {
-            console.error('❌ Error in subscriber callback:', error);
-          }
-        });
-      }
-    }, 2000);
-    
-    this.mockIntervals.set(key, interval);
-  }
-
-  // Connect to Binance WebSocket (with fallback to mock)
-  connectToExchange(symbol, timeframe, key) {
-    try {
-      const binanceSymbol = symbol.toLowerCase();
-      const binanceTimeframe = this.convertTimeframe(timeframe);
-      const wsUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol}@kline_${binanceTimeframe}`;
-      
-      console.log(`🌐 Attempting connection to: ${wsUrl}`);
-      
-      const ws = new WebSocket(wsUrl);
-      
-      // Set a timeout to switch to mock data if connection fails
-      const connectionTimeout = setTimeout(() => {
-        console.log(`⏰ Connection timeout for ${key}, switching to mock data`);
-        ws.close();
-        this.switchToMockData(symbol, timeframe, key);
-      }, 5000);
-      
-      ws.onopen = () => {
-        console.log(`✅ Real connection established for ${key}`);
-        clearTimeout(connectionTimeout);
-        this.reconnectAttempts.set(key, 0);
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.processBinanceKline(data, key);
-        } catch (error) {
-          console.error('❌ Error parsing WebSocket data:', error);
-        }
-      };
-      
-      ws.onclose = (event) => {
-        clearTimeout(connectionTimeout);
-        console.log(`🔌 WebSocket closed for ${key}. Code: ${event.code}`);
-        this.handleReconnectOrFallback(symbol, timeframe, key);
-      };
-      
-      ws.onerror = (error) => {
-        clearTimeout(connectionTimeout);
-        console.error(`❌ WebSocket error for ${key}:`, error);
-        this.switchToMockData(symbol, timeframe, key);
-      };
-      
-      this.connections.set(key, ws);
-      
-      // Try to fetch historical data (with timeout)
-      this.fetchHistoricalDataWithFallback(symbol, timeframe, key);
-      
-    } catch (error) {
-      console.error(`💥 Failed to create WebSocket for ${key}:`, error);
-      this.switchToMockData(symbol, timeframe, key);
-    }
-  }
-
-  // Fetch historical data with fallback
-  async fetchHistoricalDataWithFallback(symbol, timeframe, key) {
-    try {
-      const binanceSymbol = symbol.toUpperCase();
-      const binanceTimeframe = this.convertTimeframe(timeframe);
-      const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceTimeframe}&limit=200`;
-      
-      console.log(`📚 Fetching historical data from: ${url}`);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(url, { 
-        signal: controller.signal,
-        mode: 'cors'
-      });
-      
-      clearTimeout(timeoutId);
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log(`📊 Received ${data.length} historical candles for ${key}`);
       
-      if (Array.isArray(data)) {
-        const candles = data.map(kline => ({
-          timestamp: new Date(kline[0]).toISOString(),
-          time: new Date(kline[0]).toLocaleTimeString('en-US', { 
-            hour12: false, 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }),
-          open: parseFloat(kline[1]),
-          high: parseFloat(kline[2]),
-          low: parseFloat(kline[3]),
-          close: parseFloat(kline[4]),
-          volume: parseFloat(kline[5]),
-          isComplete: true
-        }));
+      if (data && data[coinId] && data[coinId].usd) {
+        const newPrice = data[coinId].usd;
+        const priceChange = data[coinId].usd_24h_change || 0;
         
-        this.candleData.set(key, candles);
+        console.log(`✅ Real price for ${symbol}: $${newPrice} (${priceChange.toFixed(2)}%)`);
         
-        // Notify subscribers
-        const callbacks = this.subscribers.get(key);
-        if (callbacks) {
-          callbacks.forEach(callback => {
-            try {
-              callback([...candles]);
-            } catch (error) {
-              console.error('❌ Error in subscriber callback:', error);
-            }
-          });
-        }
+        this.updatePriceData(symbol, key, newPrice);
+        this.lastPrices.set(symbol, { price: newPrice, change: priceChange });
+      } else {
+        throw new Error('Invalid data format');
       }
+      
     } catch (error) {
-      console.log(`📚 Historical data fetch failed for ${key}, using mock data:`, error.message);
-      // Don't switch entirely to mock here, just generate initial data
-      if (!this.candleData.get(key) || this.candleData.get(key).length === 0) {
-        const mockCandles = this.generateMockCandles(symbol);
-        this.candleData.set(key, mockCandles);
-        
-        const callbacks = this.subscribers.get(key);
-        if (callbacks) {
-          callbacks.forEach(callback => {
-            try {
-              callback([...mockCandles]);
-            } catch (error) {
-              console.error('❌ Error in subscriber callback:', error);
-            }
-          });
-        }
-      }
+      console.log(`📡 CoinGecko fetch failed for ${symbol}, using mock data:`, error.message);
+      this.updateWithMockPrice(symbol, key);
     }
   }
 
-  // Switch to mock data when real connections fail
-  switchToMockData(symbol, timeframe, key) {
-    console.log(`🎭 Switching to mock data for ${key}`);
+  // Update price data with real price
+  updatePriceData(symbol, key, newPrice) {
+    const candleArray = this.candleData.get(key) || [];
+    if (candleArray.length === 0) return;
     
-    // Clean up any existing connection
-    const ws = this.connections.get(key);
-    if (ws) {
-      ws.close();
-      this.connections.delete(key);
-    }
-    
-    // Start mock data
-    this.startMockData(symbol, timeframe, key);
-    
-    // Set global flag to use mock for future subscriptions
-    this.useMockData = true;
-  }
-
-  // Handle reconnection or fallback to mock
-  handleReconnectOrFallback(symbol, timeframe, key) {
-    const attempts = this.reconnectAttempts.get(key) || 0;
-    
-    if (attempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts.set(key, attempts + 1);
-      const delay = this.reconnectDelay * Math.pow(2, attempts);
-      
-      console.log(`🔄 Reconnect attempt ${attempts + 1}/${this.maxReconnectAttempts} for ${key} in ${delay}ms`);
-      
-      setTimeout(() => {
-        if (this.subscribers.get(key)?.size > 0) {
-          this.connectToExchange(symbol, timeframe, key);
-        }
-      }, delay);
-    } else {
-      console.log(`💀 Max reconnection attempts reached for ${key}, switching to mock data`);
-      this.switchToMockData(symbol, timeframe, key);
-    }
-  }
-
-  // Process real Binance kline data
-  processBinanceKline(data, key) {
-    if (!data.k) return;
-    
-    const kline = data.k;
-    const candle = {
-      timestamp: new Date(kline.t).toISOString(),
-      time: new Date(kline.t).toLocaleTimeString('en-US', { 
+    // Update the last candle with new real price
+    const lastCandle = candleArray[candleArray.length - 1];
+    const updatedCandle = {
+      ...lastCandle,
+      close: newPrice,
+      high: Math.max(lastCandle.high, newPrice),
+      low: Math.min(lastCandle.low, newPrice),
+      timestamp: new Date().toISOString(),
+      time: new Date().toLocaleTimeString('en-US', { 
         hour12: false, 
         hour: '2-digit', 
         minute: '2-digit' 
-      }),
-      open: parseFloat(kline.o),
-      high: parseFloat(kline.h),
-      low: parseFloat(kline.l),
-      close: parseFloat(kline.c),
-      volume: parseFloat(kline.v),
-      isComplete: kline.x
+      })
     };
     
-    console.log(`📈 Real price update for ${key}: $${candle.close}`);
-    
-    let candleArray = this.candleData.get(key) || [];
-    
-    if (candle.isComplete) {
-      candleArray.push(candle);
-      if (candleArray.length > 200) {
-        candleArray = candleArray.slice(-200);
-      }
-      this.candleData.set(key, candleArray);
-    } else {
-      if (candleArray.length > 0) {
-        candleArray[candleArray.length - 1] = candle;
-      } else {
-        candleArray.push(candle);
-        this.candleData.set(key, candleArray);
-      }
-    }
+    // Update the array
+    candleArray[candleArray.length - 1] = updatedCandle;
     
     // Notify subscribers
+    this.notifySubscribers(key, candleArray);
+  }
+
+  // Update with realistic mock price
+  updateWithMockPrice(symbol, key) {
+    const candleArray = this.candleData.get(key) || [];
+    if (candleArray.length === 0) return;
+    
+    const lastCandle = candleArray[candleArray.length - 1];
+    const volatility = Math.random() * 0.008 - 0.004; // ±0.4%
+    const newPrice = lastCandle.close * (1 + volatility);
+    
+    const updatedCandle = {
+      ...lastCandle,
+      close: newPrice,
+      high: Math.max(lastCandle.high, newPrice),
+      low: Math.min(lastCandle.low, newPrice),
+      timestamp: new Date().toISOString(),
+      time: new Date().toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      })
+    };
+    
+    candleArray[candleArray.length - 1] = updatedCandle;
+    
+    console.log(`🎭 Mock price update for ${symbol}: $${newPrice.toFixed(4)}`);
+    
+    // Notify subscribers
+    this.notifySubscribers(key, candleArray);
+  }
+
+  // Notify all subscribers
+  notifySubscribers(key, candleArray) {
     const callbacks = this.subscribers.get(key);
     if (callbacks) {
       callbacks.forEach(callback => {
@@ -398,77 +240,42 @@ class CryptoDataService {
     }
   }
 
-  // Convert timeframe to Binance format
-  convertTimeframe(timeframe) {
-    const timeframeMap = {
-      '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
-      '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1d'
-    };
-    return timeframeMap[timeframe] || '1m';
-  }
-
-  // Disconnect
-  disconnect(key) {
-    console.log(`🔌 Disconnecting ${key}`);
+  // Stop data updates
+  stopDataUpdates(key) {
+    console.log(`🛑 Stopping data updates for ${key}`);
     
-    // Clean up WebSocket
-    const ws = this.connections.get(key);
-    if (ws) {
-      ws.close();
-      this.connections.delete(key);
-    }
-    
-    // Clean up mock interval
-    const interval = this.mockIntervals.get(key);
+    const interval = this.updateIntervals.get(key);
     if (interval) {
       clearInterval(interval);
-      this.mockIntervals.delete(key);
+      this.updateIntervals.delete(key);
     }
     
     this.candleData.delete(key);
-    this.reconnectAttempts.delete(key);
   }
 
-  // Disconnect all
+  // Stop all updates
   disconnectAll() {
-    console.log(`🚫 Disconnecting all connections`);
+    console.log(`🚫 Stopping all data updates`);
     
-    this.connections.forEach((ws) => ws.close());
-    this.connections.clear();
-    
-    this.mockIntervals.forEach((interval) => clearInterval(interval));
-    this.mockIntervals.clear();
-    
+    this.updateIntervals.forEach((interval) => clearInterval(interval));
+    this.updateIntervals.clear();
     this.subscribers.clear();
     this.candleData.clear();
-    this.reconnectAttempts.clear();
+    this.lastPrices.clear();
   }
 
   // Get current price
   getCurrentPrice(symbol) {
-    for (const [key, candles] of this.candleData) {
-      if (key.startsWith(symbol + '_') && candles && candles.length > 0) {
-        return candles[candles.length - 1].close;
-      }
-    }
-    return null;
+    const priceData = this.lastPrices.get(symbol);
+    return priceData ? priceData.price : null;
   }
 
-  // Check connection status
+  // Check connection status (always true for CoinGecko approach)
   getConnectionStatus(symbol, timeframe) {
     const key = `${symbol}_${timeframe}`;
-    
-    // Check if we have mock data running
-    if (this.mockIntervals.has(key)) {
-      console.log(`🎭 Mock connection active for ${key}`);
-      return true;
-    }
-    
-    // Check real WebSocket
-    const ws = this.connections.get(key);
-    const isConnected = ws ? ws.readyState === WebSocket.OPEN : false;
-    console.log(`🔍 Real connection status for ${key}: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
-    return isConnected;
+    const hasData = this.candleData.has(key) && this.candleData.get(key).length > 0;
+    console.log(`🔍 Connection status for ${key}: ${hasData ? 'CONNECTED' : 'DISCONNECTED'}`);
+    return hasData;
   }
 }
 
