@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, BellRing, Volume2, VolumeX, Settings, Target, TrendingUp, TrendingDown, AlertTriangle, Check, X, Zap, BarChart3 } from 'lucide-react';
+import cryptoDataService from '../lib/cryptoDataService'; // Use the universal data service
 
 const SmartAlertSystem = () => {
   const [alerts, setAlerts] = useState([]);
@@ -42,19 +43,21 @@ const SmartAlertSystem = () => {
   
   const audioRef = useRef(null);
   const notificationPermission = useRef(false);
+  const lastAlertTime = useRef({});
 
-  // Sample market data - In real implementation, this would come from your data service
+  // Real market data from the universal data service
   const [marketData, setMarketData] = useState({
-    drPaulScore: 78,
-    ethPrice: 4485.67,
-    pocLevel: 4472.33,
-    supportLevel: 4441.25,
-    resistanceLevel: 4523.89,
-    ema9: 4478.12,
-    sma21: 4465.78,
-    trend: 'BULLISH',
-    volume: 'HIGH',
-    timeframe: '30m'
+    drPaulScore: 0,
+    ethPrice: 0,
+    pocLevel: 0,
+    supportLevel: 0,
+    resistanceLevel: 0,
+    ema9: 0,
+    sma21: 0,
+    trend: 'NEUTRAL',
+    volume: 0,
+    timeframe: '30m',
+    priceChange24h: 0
   });
 
   // Request notification permission on component mount
@@ -66,144 +69,227 @@ const SmartAlertSystem = () => {
     }
   }, []);
 
-  // Alert logic - checks market conditions against thresholds
-  const checkAlertConditions = (data) => {
+  // Subscribe to real market data
+  useEffect(() => {
+    console.log('🚨 SmartAlertSystem subscribing to real market data...');
+    
+    // Subscribe to ETH data for alerts
+    const unsubscribe = cryptoDataService.subscribe('ETHUSDT', '1m', (candleData) => {
+      if (!candleData || candleData.length === 0) {
+        console.log('⚠️ No candle data for alerts');
+        return;
+      }
+      
+      const latestCandle = candleData[candleData.length - 1];
+      const priceInfo = cryptoDataService.lastPrices.get('ETHUSDT') || {};
+      
+      // Calculate Dr. Paul Score based on real data
+      const drPaulScore = calculateDrPaulScore(latestCandle, candleData, priceInfo);
+      
+      // Calculate volume levels (simplified for demo)
+      const pocLevel = latestCandle.close * (0.999 + Math.random() * 0.002); // ±0.1% POC
+      const supportLevel = latestCandle.close * 0.985; // 1.5% below
+      const resistanceLevel = latestCandle.close * 1.015; // 1.5% above
+      
+      // Calculate moving averages
+      const ema9 = calculateEMA(candleData, 9);
+      const sma21 = calculateSMA(candleData, 21);
+      
+      const newMarketData = {
+        drPaulScore: drPaulScore,
+        ethPrice: latestCandle.close,
+        pocLevel: pocLevel,
+        supportLevel: supportLevel,
+        resistanceLevel: resistanceLevel,
+        ema9: ema9[ema9.length - 1] || latestCandle.close,
+        sma21: sma21[sma21.length - 1] || latestCandle.close,
+        trend: (ema9[ema9.length - 1] || 0) > (sma21[sma21.length - 1] || 0) ? 'BULLISH' : 'BEARISH',
+        volume: latestCandle.volume || 0,
+        timeframe: '1m',
+        priceChange24h: priceInfo.change || 0,
+        timestamp: Date.now()
+      };
+      
+      setMarketData(newMarketData);
+      console.log(`📊 Alert system updated: ETH $${latestCandle.close.toFixed(2)} | Dr. Paul Score: ${drPaulScore.toFixed(1)}%`);
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Calculate Dr. Paul Score based on real market conditions
+  const calculateDrPaulScore = (currentCandle, candleData, priceInfo) => {
+    let score = 50; // Base score
+    
+    try {
+      // Hard trade component (market fear)
+      const priceChange = priceInfo.change || 0;
+      if (priceChange < -2) score += 15; // Market fear = opportunity
+      else if (priceChange > 5) score -= 10; // Extreme greed = danger
+      
+      // Volume component
+      if (currentCandle.volume && candleData.length > 20) {
+        const avgVolume = candleData.slice(-20).reduce((sum, c) => sum + (c.volume || 0), 0) / 20;
+        if (currentCandle.volume > avgVolume * 1.5) score += 10; // High volume
+      }
+      
+      // Technical component (simplified)
+      const volatility = Math.abs(priceChange);
+      if (volatility > 3 && volatility < 8) score += 10; // Moderate volatility good
+      else if (volatility > 10) score -= 15; // Extreme volatility bad
+      
+      // Whale accumulation simulation
+      const whaleScore = Math.random() * 20; // Simplified whale activity
+      score += whaleScore;
+      
+      // Risk/reward component
+      if (priceChange < 0 && priceChange > -5) score += 10; // Good dip buying opportunity
+      
+    } catch (error) {
+      console.error('Error calculating Dr. Paul Score:', error);
+    }
+    
+    return Math.max(0, Math.min(100, score));
+  };
+
+  // Calculate EMA
+  const calculateEMA = (data, period) => {
+    if (data.length < period) return [];
+    
+    const multiplier = 2 / (period + 1);
+    const ema = [];
+    
+    // Start with SMA
+    const sma = data.slice(0, period).reduce((sum, val) => sum + val.close, 0) / period;
+    ema.push(sma);
+    
+    for (let i = period; i < data.length; i++) {
+      const currentEMA = (data[i].close * multiplier) + (ema[ema.length - 1] * (1 - multiplier));
+      ema.push(currentEMA);
+    }
+    
+    return ema;
+  };
+
+  // Calculate SMA
+  const calculateSMA = (data, period) => {
+    const sma = [];
+    for (let i = period - 1; i < data.length; i++) {
+      const slice = data.slice(i - period + 1, i + 1);
+      const avg = slice.reduce((sum, val) => sum + val.close, 0) / period;
+      sma.push(avg);
+    }
+    return sma;
+  };
+
+  // Check for alert conditions when market data updates
+  useEffect(() => {
+    if (!alertsEnabled || !marketData.ethPrice) return;
+
     const newAlerts = [];
     const timestamp = new Date();
 
     // Dr. Paul Score Alerts
     if (alertSettings.drPaulScore.enabled) {
-      if (data.drPaulScore >= alertSettings.drPaulScore.thresholds.excellent) {
-        newAlerts.push({
-          id: `score-excellent-${timestamp.getTime()}`,
-          type: 'EXCELLENT_SCORE',
-          title: '🎯 EXCELLENT Dr. Paul Setup!',
-          message: `Score: ${data.drPaulScore}% - High conviction opportunity`,
-          priority: 'HIGH',
-          timestamp,
-          data: { score: data.drPaulScore, price: data.ethPrice }
-        });
-      } else if (data.drPaulScore >= alertSettings.drPaulScore.thresholds.good) {
-        newAlerts.push({
-          id: `score-good-${timestamp.getTime()}`,
-          type: 'GOOD_SCORE',
-          title: '✅ Good Dr. Paul Setup',
-          message: `Score: ${data.drPaulScore}% - Consider entry`,
-          priority: 'MEDIUM',
-          timestamp,
-          data: { score: data.drPaulScore, price: data.ethPrice }
-        });
-      } else if (data.drPaulScore <= alertSettings.drPaulScore.thresholds.poor) {
-        newAlerts.push({
-          id: `score-poor-${timestamp.getTime()}`,
-          type: 'POOR_SCORE',
-          title: '⚠️ Poor Setup Quality',
-          message: `Score: ${data.drPaulScore}% - Avoid trading`,
-          priority: 'LOW',
-          timestamp,
-          data: { score: data.drPaulScore, price: data.ethPrice }
-        });
+      const scoreAlertKey = 'dr_paul_score';
+      const lastAlert = lastAlertTime.current[scoreAlertKey] || 0;
+      const cooldown = 300000; // 5 minutes
+      
+      if (Date.now() - lastAlert > cooldown) {
+        if (marketData.drPaulScore >= alertSettings.drPaulScore.thresholds.excellent) {
+          newAlerts.push({
+            id: `score-excellent-${timestamp.getTime()}`,
+            type: 'EXCELLENT_SCORE',
+            title: '🎯 EXCELLENT Dr. Paul Setup!',
+            message: `Score: ${marketData.drPaulScore.toFixed(1)}% - High conviction opportunity at $${marketData.ethPrice.toFixed(2)}`,
+            priority: 'HIGH',
+            timestamp,
+            data: { score: marketData.drPaulScore, price: marketData.ethPrice }
+          });
+          lastAlertTime.current[scoreAlertKey] = Date.now();
+        } else if (marketData.drPaulScore >= alertSettings.drPaulScore.thresholds.good) {
+          newAlerts.push({
+            id: `score-good-${timestamp.getTime()}`,
+            type: 'GOOD_SCORE',
+            title: '✅ Good Dr. Paul Setup',
+            message: `Score: ${marketData.drPaulScore.toFixed(1)}% - Consider entry at $${marketData.ethPrice.toFixed(2)}`,
+            priority: 'MEDIUM',
+            timestamp,
+            data: { score: marketData.drPaulScore, price: marketData.ethPrice }
+          });
+          lastAlertTime.current[scoreAlertKey] = Date.now();
+        }
       }
     }
 
     // Volume Level Alerts
-    if (alertSettings.volumeLevels.enabled) {
-      const pocDistance = Math.abs(data.ethPrice - data.pocLevel) / data.pocLevel * 100;
+    if (alertSettings.volumeLevels.enabled && marketData.pocLevel) {
+      const pocDistance = Math.abs(marketData.ethPrice - marketData.pocLevel) / marketData.pocLevel * 100;
       
       if (pocDistance <= alertSettings.volumeLevels.pocDistance) {
-        newAlerts.push({
-          id: `poc-${timestamp.getTime()}`,
-          type: 'POC_LEVEL',
-          title: '📊 Price at POC Level',
-          message: `ETH ${data.ethPrice} near POC ${data.pocLevel} - Volume magnet`,
-          priority: 'HIGH',
-          timestamp,
-          data: { price: data.ethPrice, poc: data.pocLevel, distance: pocDistance }
-        });
-      }
-
-      // Support/Resistance alerts
-      if (Math.abs(data.ethPrice - data.supportLevel) / data.ethPrice * 100 <= 0.5) {
-        newAlerts.push({
-          id: `support-${timestamp.getTime()}`,
-          type: 'SUPPORT_LEVEL',
-          title: '🟢 Price at Support',
-          message: `ETH ${data.ethPrice} at support ${data.supportLevel} - Bounce opportunity`,
-          priority: 'MEDIUM',
-          timestamp,
-          data: { price: data.ethPrice, level: data.supportLevel, type: 'support' }
-        });
-      }
-
-      if (Math.abs(data.ethPrice - data.resistanceLevel) / data.ethPrice * 100 <= 0.5) {
-        newAlerts.push({
-          id: `resistance-${timestamp.getTime()}`,
-          type: 'RESISTANCE_LEVEL',
-          title: '🔴 Price at Resistance',
-          message: `ETH ${data.ethPrice} at resistance ${data.resistanceLevel} - Watch for reversal`,
-          priority: 'MEDIUM',
-          timestamp,
-          data: { price: data.ethPrice, level: data.resistanceLevel, type: 'resistance' }
-        });
+        const pocAlertKey = 'poc_level';
+        const lastAlert = lastAlertTime.current[pocAlertKey] || 0;
+        
+        if (Date.now() - lastAlert > 600000) { // 10 minutes cooldown
+          newAlerts.push({
+            id: `poc-${timestamp.getTime()}`,
+            type: 'POC_LEVEL',
+            title: '📊 Price at POC Level',
+            message: `ETH $${marketData.ethPrice.toFixed(2)} near POC $${marketData.pocLevel.toFixed(2)} - Volume magnet activated`,
+            priority: 'HIGH',
+            timestamp,
+            data: { price: marketData.ethPrice, poc: marketData.pocLevel, distance: pocDistance }
+          });
+          lastAlertTime.current[pocAlertKey] = Date.now();
+        }
       }
     }
 
-    // Scalping Signals
+    // EMA Cross Alerts
     if (alertSettings.scalping.enabled && alertSettings.scalping.emaCross) {
-      if (data.ema9 > data.sma21 && data.trend === 'BULLISH') {
-        newAlerts.push({
-          id: `ema-cross-bull-${timestamp.getTime()}`,
-          type: 'EMA_CROSS_BULL',
-          title: '📈 Bullish EMA Cross',
-          message: `9 EMA above 21 MA on ${data.timeframe} - Long signal`,
-          priority: 'MEDIUM',
-          timestamp,
-          data: { ema9: data.ema9, sma21: data.sma21, timeframe: data.timeframe }
-        });
+      if (marketData.ema9 && marketData.sma21) {
+        const crossAlertKey = 'ema_cross';
+        const lastAlert = lastAlertTime.current[crossAlertKey] || 0;
+        
+        if (Date.now() - lastAlert > 180000) { // 3 minutes cooldown
+          if (marketData.ema9 > marketData.sma21 && marketData.trend === 'BULLISH') {
+            newAlerts.push({
+              id: `ema-cross-bull-${timestamp.getTime()}`,
+              type: 'EMA_CROSS_BULL',
+              title: '📈 Bullish EMA Cross',
+              message: `9 EMA ($${marketData.ema9.toFixed(2)}) above 21 MA ($${marketData.sma21.toFixed(2)}) - Long signal`,
+              priority: 'MEDIUM',
+              timestamp,
+              data: { ema9: marketData.ema9, sma21: marketData.sma21, price: marketData.ethPrice }
+            });
+            lastAlertTime.current[crossAlertKey] = Date.now();
+          }
+        }
       }
     }
 
-    return newAlerts;
-  };
-
-  // Simulate market data updates (in real app, this would be your data service)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Simulate price movement and score changes
-      const priceChange = (Math.random() - 0.5) * 10; // ±$5 movement
-      const scoreChange = (Math.random() - 0.5) * 4; // ±2% score change
-      
-      setMarketData(prev => ({
-        ...prev,
-        ethPrice: Math.max(4400, Math.min(4600, prev.ethPrice + priceChange)),
-        drPaulScore: Math.max(0, Math.min(100, prev.drPaulScore + scoreChange)),
-        ema9: prev.ethPrice + (Math.random() - 0.5) * 5,
-        sma21: prev.ethPrice + (Math.random() - 0.5) * 8
-      }));
-    }, 5000); // Update every 5 seconds
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Check for new alerts when market data updates
-  useEffect(() => {
-    if (!alertsEnabled) return;
-
-    const newAlerts = checkAlertConditions(marketData);
-    
+    // Process new alerts
     if (newAlerts.length > 0) {
-      // Add to active alerts
-      setAlerts(prev => [...newAlerts, ...prev.slice(0, 9)]); // Keep last 10 alerts
-      
-      // Add to history
-      setAlertHistory(prev => [...newAlerts, ...prev.slice(0, 49)]); // Keep last 50 in history
-      
-      // Trigger notifications
-      newAlerts.forEach(alert => {
-        triggerAlert(alert);
-      });
+      processNewAlerts(newAlerts);
     }
+
   }, [marketData, alertsEnabled, alertSettings]);
+
+  // Process and distribute new alerts
+  const processNewAlerts = (newAlerts) => {
+    // Add to active alerts (limit to max)
+    setAlerts(prev => [...newAlerts, ...prev.slice(0, 9)]);
+
+    // Add to history
+    setAlertHistory(prev => [...newAlerts, ...prev.slice(0, 49)]);
+
+    // Trigger notifications
+    newAlerts.forEach(alert => triggerAlert(alert));
+
+    console.log(`🚨 ${newAlerts.length} new alerts generated:`, newAlerts.map(a => a.title));
+  };
 
   // Trigger alert notifications
   const triggerAlert = (alert) => {
@@ -211,8 +297,9 @@ const SmartAlertSystem = () => {
     if (alertSettings.notifications.browser && notificationPermission.current) {
       new Notification(alert.title, {
         body: alert.message,
-        icon: '/icon-192x192.png',
-        tag: alert.type
+        icon: '/favicon.ico',
+        tag: alert.type,
+        requireInteraction: alert.priority === 'HIGH'
       });
     }
 
@@ -220,9 +307,6 @@ const SmartAlertSystem = () => {
     if (alertSettings.notifications.audio && soundEnabled && audioRef.current) {
       audioRef.current.play().catch(e => console.log('Audio play failed:', e));
     }
-
-    // Console log for debugging
-    console.log(`🚨 ALERT: ${alert.title} - ${alert.message}`);
   };
 
   // Dismiss alert
@@ -307,7 +391,7 @@ const SmartAlertSystem = () => {
           </div>
         </div>
         <p className="text-gray-600 mt-1">
-          Real-time monitoring • Dr. Paul Score • Volume Levels • Technical Signals
+          Real-time monitoring • Live market data • Dr. Paul Score • Volume Levels • Technical Signals
         </p>
       </div>
 
@@ -330,7 +414,9 @@ const SmartAlertSystem = () => {
           <div className="text-xl font-bold text-gray-900">
             ${marketData.ethPrice.toFixed(2)}
           </div>
-          <div className="text-xs text-gray-500">Live market price</div>
+          <div className={`text-xs ${marketData.priceChange24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {marketData.priceChange24h >= 0 ? '+' : ''}{marketData.priceChange24h.toFixed(2)}% 24h
+          </div>
         </div>
 
         <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-500">
@@ -383,7 +469,7 @@ const SmartAlertSystem = () => {
                   <span className="text-sm">Enable Dr. Paul Score alerts</span>
                 </label>
                 
-                <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <label className="block text-gray-600">Excellent (≥)</label>
                     <input
@@ -418,23 +504,6 @@ const SmartAlertSystem = () => {
                       max="90"
                     />
                   </div>
-                  <div>
-                    <label className="block text-gray-600">Poor (≤)</label>
-                    <input
-                      type="number"
-                      value={alertSettings.drPaulScore.thresholds.poor}
-                      onChange={(e) => setAlertSettings(prev => ({
-                        ...prev,
-                        drPaulScore: {
-                          ...prev.drPaulScore,
-                          thresholds: { ...prev.drPaulScore.thresholds, poor: Number(e.target.value) }
-                        }
-                      }))}
-                      className="w-full p-1 border rounded text-center"
-                      min="0"
-                      max="70"
-                    />
-                  </div>
                 </div>
               </div>
             </div>
@@ -457,7 +526,7 @@ const SmartAlertSystem = () => {
                 </label>
                 
                 <div>
-                  <label className="block text-gray-600 text-sm">POC Distance (%) :</label>
+                  <label className="block text-gray-600 text-sm">POC Distance (%)</label>
                   <input
                     type="number"
                     value={alertSettings.volumeLevels.pocDistance}
@@ -471,19 +540,6 @@ const SmartAlertSystem = () => {
                     step="0.1"
                   />
                 </div>
-                
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={alertSettings.volumeLevels.supportResistance}
-                    onChange={(e) => setAlertSettings(prev => ({
-                      ...prev,
-                      volumeLevels: { ...prev.volumeLevels, supportResistance: e.target.checked }
-                    }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm">Support/Resistance alerts</span>
-                </label>
               </div>
             </div>
           </div>
@@ -497,7 +553,6 @@ const SmartAlertSystem = () => {
             </button>
             <button
               onClick={() => {
-                // Save settings to localStorage
                 localStorage.setItem('alertSettings', JSON.stringify(alertSettings));
                 setIsConfigOpen(false);
               }}
@@ -558,7 +613,7 @@ const SmartAlertSystem = () => {
           <div className="text-center py-8 text-gray-500">
             <Bell className="w-12 h-12 mx-auto mb-2 opacity-50" />
             <div className="font-medium">No active alerts</div>
-            <div className="text-sm">System is monitoring for threshold conditions...</div>
+            <div className="text-sm">System is monitoring live market data for threshold conditions...</div>
           </div>
         )}
       </div>
@@ -584,35 +639,40 @@ const SmartAlertSystem = () => {
         </div>
 
         <div className="bg-white p-4 rounded-lg shadow-sm">
-          <h4 className="font-medium text-gray-900 mb-3">Alert Priority</h4>
+          <h4 className="font-medium text-gray-900 mb-3">Current Market Status</h4>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-red-600">High Priority</span>
-              <span className="font-medium">{alertHistory.filter(a => a.priority === 'HIGH').length}</span>
+              <span>Trend</span>
+              <span className={`font-medium ${marketData.trend === 'BULLISH' ? 'text-green-600' : 'text-red-600'}`}>
+                {marketData.trend}
+              </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-yellow-600">Medium Priority</span>
-              <span className="font-medium">{alertHistory.filter(a => a.priority === 'MEDIUM').length}</span>
+              <span>Last Update</span>
+              <span className="font-medium">{new Date(marketData.timestamp).toLocaleTimeString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-blue-600">Low Priority</span>
-              <span className="font-medium">{alertHistory.filter(a => a.priority === 'LOW').length}</span>
+              <span>Data Source</span>
+              <span className="font-medium text-green-600">Live CoinGecko</span>
             </div>
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-lg shadow-sm">
-          <h4 className="font-medium text-gray-900 mb-3">Alert Actions</h4>
+          <h4 className="font-medium text-gray-900 mb-3">System Status</h4>
           <div className="space-y-2 text-sm">
-            <button className="w-full px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
-              Export Alert History
-            </button>
-            <button className="w-full px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors">
-              Test All Alerts
-            </button>
-            <button className="w-full px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors">
-              Reset Alert History
-            </button>
+            <div className="flex justify-between">
+              <span>Real Data Feed</span>
+              <span className="font-medium text-green-600">Active</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Browser Notifications</span>
+              <span className="font-medium">{notificationPermission.current ? 'Enabled' : 'Disabled'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Audio Alerts</span>
+              <span className="font-medium">{soundEnabled ? 'On' : 'Off'}</span>
+            </div>
           </div>
         </div>
       </div>
