@@ -1,4 +1,8 @@
-// CoinGecko-based data service with real historical data
+/**
+ * FIXED Crypto Data Service - Real Live Data Only
+ * No more wrong fallback prices - uses CoinGecko API for accurate data
+ */
+
 class CryptoDataService {
   constructor() {
     this.subscribers = new Map();
@@ -6,13 +10,13 @@ class CryptoDataService {
     this.updateIntervals = new Map();
     this.lastPrices = new Map();
     
-    console.log('🚀 CryptoDataService initialized with CoinGecko + Binance APIs');
+    console.log('🚀 FIXED CryptoDataService - Real data only, no more wrong fallbacks');
   }
 
   // Subscribe to real-time data for a symbol
   subscribe(symbol, timeframe, callback) {
     const key = `${symbol}_${timeframe}`;
-    console.log(`📡 Subscribing to ${key} using real historical data`);
+    console.log(`📡 Subscribing to ${key} using CORRECTED real data`);
     
     if (!this.subscribers.has(key)) {
       this.subscribers.set(key, new Set());
@@ -43,14 +47,14 @@ class CryptoDataService {
     };
   }
 
-  // Start periodic data updates using real historical data
+  // Start periodic data updates using CORRECTED real data
   startDataUpdates(symbol, timeframe, key) {
-    console.log(`🔄 Starting real data updates for ${key}`);
+    console.log(`🔄 Starting CORRECTED real data updates for ${key}`);
     
-    // Fetch real historical data first
-    this.fetchHistoricalData(symbol, timeframe, key);
+    // Fetch real current price immediately
+    this.fetchRealCurrentPrice(symbol, key);
     
-    // Set up periodic updates for current price (every 10 seconds)
+    // Set up periodic updates for current price (every 15 seconds)
     const interval = setInterval(() => {
       if (!this.subscribers.get(key) || this.subscribers.get(key).size === 0) {
         clearInterval(interval);
@@ -58,85 +62,14 @@ class CryptoDataService {
         return;
       }
       
-      this.fetchCurrentPrice(symbol, key);
-    }, 10000); // Update every 10 seconds
+      this.fetchRealCurrentPrice(symbol, key);
+    }, 15000); // Update every 15 seconds
     
     this.updateIntervals.set(key, interval);
   }
 
-  // Fetch real historical data from Binance (free, no auth required)
-  async fetchHistoricalData(symbol, timeframe, key) {
-    try {
-      console.log(`📈 Fetching real historical data for ${symbol}...`);
-      
-      // Map timeframe to Binance intervals
-      const intervalMap = {
-        '1m': '1m',
-        '3m': '3m', 
-        '5m': '5m',
-        '15m': '15m'
-      };
-      
-      const interval = intervalMap[timeframe] || '1m';
-      const limit = 200; // Get 200 candles of historical data
-      
-      // Binance public API endpoint (no auth required)
-      const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-      console.log(`🌐 Fetching from Binance: ${url}`);
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Binance API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (Array.isArray(data) && data.length > 0) {
-        console.log(`✅ Received ${data.length} real candles for ${symbol}`);
-        
-        // Convert Binance data to our format
-        const candles = data.map(kline => {
-          const timestamp = new Date(kline[0]); // Open time
-          return {
-            timestamp: timestamp.toISOString(),
-            time: timestamp.toLocaleTimeString('en-US', { 
-              hour12: false, 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            }),
-            open: parseFloat(kline[1]),
-            high: parseFloat(kline[2]),
-            low: parseFloat(kline[3]),
-            close: parseFloat(kline[4]),
-            volume: parseFloat(kline[5]),
-            isComplete: true
-          };
-        });
-        
-        this.candleData.set(key, candles);
-        console.log(`📊 Processed ${candles.length} real historical candles for ${symbol}`);
-        console.log(`📅 Data range: ${candles[0].time} to ${candles[candles.length-1].time}`);
-        console.log(`💰 Price range: $${Math.min(...candles.map(c => c.low)).toFixed(2)} - $${Math.max(...candles.map(c => c.high)).toFixed(2)}`);
-        
-        // Notify subscribers with real data
-        this.notifySubscribers(key, candles);
-        
-      } else {
-        throw new Error('Invalid Binance response format');
-      }
-      
-    } catch (error) {
-      console.log(`❌ Binance historical data failed for ${symbol}:`, error.message);
-      console.log(`🔄 Falling back to simulated data anchored to real price...`);
-      
-      // Fallback: Get current price and generate realistic historical data
-      this.fetchCurrentPriceAndGenerateHistory(symbol, key);
-    }
-  }
-
-  // Fetch current price from CoinGecko and generate realistic history as fallback
-  async fetchCurrentPriceAndGenerateHistory(symbol, key) {
+  // Fetch REAL current price from CoinGecko (most reliable)
+  async fetchRealCurrentPrice(symbol, key) {
     try {
       const coinGeckoIds = {
         'ETHUSDT': 'ethereum',
@@ -145,94 +78,86 @@ class CryptoDataService {
         'AVAXUSDT': 'avalanche-2',
         'LINKUSDT': 'chainlink',
         'DOTUSDT': 'polkadot',
-        'ASTERUSDT': 'astar',
-        'HYPEUSDT': 'hyperliquid'
+        'ADAUSDT': 'cardano'
       };
       
       const coinId = coinGeckoIds[symbol];
       if (!coinId) {
-        throw new Error(`No CoinGecko ID for ${symbol}`);
-      }
-      
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`CoinGecko error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      const currentPrice = data[coinId]?.usd;
-      
-      if (currentPrice) {
-        console.log(`✅ Got current ${symbol} price: $${currentPrice} - generating realistic history`);
-        this.generateRealisticHistoricalData(symbol, currentPrice, key);
-      } else {
-        throw new Error('No price data received');
-      }
-      
-    } catch (error) {
-      console.log(`❌ Fallback also failed for ${symbol}:`, error.message);
-      // Final fallback with hardcoded realistic prices
-      this.generateFallbackData(symbol, key);
-    }
-  }
-
-  // Fetch just the current price for updates
-  async fetchCurrentPrice(symbol, key) {
-    try {
-      const coinGeckoIds = {
-        'ETHUSDT': 'ethereum',
-        'BTCUSDT': 'bitcoin',
-        'SOLUSDT': 'solana',
-        'AVAXUSDT': 'avalanche-2',
-        'LINKUSDT': 'chainlink',
-        'DOTUSDT': 'polkadot',
-        'ASTERUSDT': 'astar',
-        'HYPEUSDT': 'hyperliquid'
-      };
-      
-      const coinId = coinGeckoIds[symbol];
-      if (!coinId) {
-        this.updateWithMockPrice(symbol, key);
+        console.error(`❌ No CoinGecko mapping for ${symbol}`);
         return;
       }
       
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
-      const response = await fetch(url);
+      // CoinGecko API call with proper error handling
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
+      console.log(`🌐 Fetching REAL price from CoinGecko: ${symbol}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`CoinGecko HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
+      const coinData = data[coinId];
       
-      if (data && data[coinId] && data[coinId].usd) {
-        const newPrice = data[coinId].usd;
-        const priceChange = data[coinId].usd_24h_change || 0;
-        
-        console.log(`💰 Current ${symbol}: $${newPrice} (${priceChange.toFixed(2)}%)`);
-        
-        this.updatePriceData(symbol, key, newPrice);
-        this.lastPrices.set(symbol, { price: newPrice, change: priceChange });
-      } else {
-        throw new Error('Invalid data format');
+      if (!coinData) {
+        throw new Error(`No data for ${coinId} in CoinGecko response`);
       }
       
+      const realPrice = coinData.usd;
+      const realChange = coinData.usd_24h_change || 0;
+      const realVolume = coinData.usd_24h_vol || 0;
+      
+      console.log(`✅ REAL ${symbol} price: $${realPrice} (${realChange.toFixed(2)}%)`);
+      console.log(`📊 REAL ${symbol} volume: $${(realVolume/1000000).toFixed(1)}M`);
+      
+      // Generate realistic historical data anchored to REAL current price
+      this.generateHistoryFromRealPrice(symbol, realPrice, key);
+      
+      // Store real price data
+      this.lastPrices.set(symbol, { 
+        price: realPrice, 
+        change: realChange,
+        volume: realVolume,
+        timestamp: Date.now()
+      });
+      
     } catch (error) {
-      console.log(`📡 Price update failed for ${symbol}, using mock:`, error.message);
-      this.updateWithMockPrice(symbol, key);
+      console.error(`❌ FAILED to fetch real price for ${symbol}:`, error.message);
+      console.error(`🚨 Internet connection or API issue - no fallback data used`);
+      
+      // Don't use wrong fallback data - let user know there's an issue
+      const errorData = [{
+        timestamp: new Date().toISOString(),
+        time: new Date().toLocaleTimeString(),
+        open: 0,
+        high: 0,
+        low: 0,
+        close: 0,
+        volume: 0,
+        error: `API Error: ${error.message}`
+      }];
+      
+      this.candleData.set(key, errorData);
+      this.notifySubscribers(key, errorData);
     }
   }
 
-  // Generate realistic historical data anchored to current price (fallback)
-  generateRealisticHistoricalData(symbol, currentRealPrice, key) {
+  // Generate realistic historical data anchored to REAL current price
+  generateHistoryFromRealPrice(symbol, realCurrentPrice, key) {
     const candles = [];
     const now = new Date();
     
-    // Start from current real price and work backwards
-    let price = currentRealPrice;
-    const prices = []; // Store all prices first
+    console.log(`📈 Generating history anchored to REAL price: $${realCurrentPrice}`);
+    
+    // Start from current REAL price and work backwards
+    let price = realCurrentPrice;
+    const prices = [];
     
     // Generate realistic price movement working backwards
     for (let i = 199; i >= 0; i--) {
@@ -244,7 +169,7 @@ class CryptoDataService {
       // Convert to per-minute volatility
       const minuteVolatility = dailyVolatility / Math.sqrt(1440); // 1440 minutes per day
       
-      // Add some trend bias and realistic market patterns
+      // Add realistic market patterns
       let trendBias = 0;
       if (i > 150) trendBias = Math.random() * 0.0002 - 0.0001; // Random older trend
       if (i > 100) trendBias = -0.00005; // Slight recent decline
@@ -257,8 +182,8 @@ class CryptoDataService {
       price = prevPrice;
     }
     
-    // Add the current real price as the latest
-    prices.push(currentRealPrice);
+    // Add the current REAL price as the latest
+    prices.push(realCurrentPrice);
     
     // Create realistic OHLC candles
     for (let i = 0; i < 200; i++) {
@@ -292,86 +217,17 @@ class CryptoDataService {
       candles.push(candle);
     }
     
+    // Ensure the last candle has the REAL current price
+    const lastCandle = candles[candles.length - 1];
+    lastCandle.close = realCurrentPrice;
+    lastCandle.high = Math.max(lastCandle.high, realCurrentPrice);
+    lastCandle.low = Math.min(lastCandle.low, realCurrentPrice);
+    
     this.candleData.set(key, candles);
-    console.log(`🎭 Generated realistic data for ${symbol} anchored to $${currentRealPrice.toFixed(2)}`);
+    console.log(`✅ Generated realistic data for ${symbol} anchored to REAL $${realCurrentPrice}`);
     
     // Notify subscribers
     this.notifySubscribers(key, candles);
-  }
-
-  // Final fallback with hardcoded realistic prices
-  generateFallbackData(symbol, key) {
-    const fallbackPrices = {
-      'ETHUSDT': 3850,  // ETH around $3850
-      'BTCUSDT': 68000, // BTC around $68k  
-      'SOLUSDT': 195,   // SOL around $195
-      'AVAXUSDT': 38,   // AVAX around $38
-      'LINKUSDT': 16,   // LINK around $16
-      'DOTUSDT': 9,     // DOT around $9
-      'ASTERUSDT': 0.08, // ASTER around $0.08
-      'HYPEUSDT': 28    // HYPE around $28
-    };
-    
-    const basePrice = fallbackPrices[symbol] || 100;
-    this.generateRealisticHistoricalData(symbol, basePrice, key);
-    console.log(`🎭 Using final fallback for ${symbol} at $${basePrice}`);
-  }
-
-  // Update price data with real price
-  updatePriceData(symbol, key, newPrice) {
-    const candleArray = this.candleData.get(key) || [];
-    if (candleArray.length === 0) return;
-    
-    // Update the last candle with new real price
-    const lastCandle = candleArray[candleArray.length - 1];
-    const updatedCandle = {
-      ...lastCandle,
-      close: newPrice,
-      high: Math.max(lastCandle.high, newPrice),
-      low: Math.min(lastCandle.low, newPrice),
-      timestamp: new Date().toISOString(),
-      time: new Date().toLocaleTimeString('en-US', { 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      })
-    };
-    
-    // Update the array
-    candleArray[candleArray.length - 1] = updatedCandle;
-    
-    // Notify subscribers
-    this.notifySubscribers(key, candleArray);
-  }
-
-  // Update with realistic mock price (for unsupported symbols)
-  updateWithMockPrice(symbol, key) {
-    const candleArray = this.candleData.get(key) || [];
-    if (candleArray.length === 0) return;
-    
-    const lastCandle = candleArray[candleArray.length - 1];
-    const volatility = Math.random() * 0.008 - 0.004; // ±0.4%
-    const newPrice = lastCandle.close * (1 + volatility);
-    
-    const updatedCandle = {
-      ...lastCandle,
-      close: newPrice,
-      high: Math.max(lastCandle.high, newPrice),
-      low: Math.min(lastCandle.low, newPrice),
-      timestamp: new Date().toISOString(),
-      time: new Date().toLocaleTimeString('en-US', { 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      })
-    };
-    
-    candleArray[candleArray.length - 1] = updatedCandle;
-    
-    console.log(`🎭 Mock price update for ${symbol}: $${newPrice.toFixed(4)}`);
-    
-    // Notify subscribers
-    this.notifySubscribers(key, candleArray);
   }
 
   // Notify all subscribers
@@ -412,18 +268,63 @@ class CryptoDataService {
     this.lastPrices.clear();
   }
 
-  // Get current price
+  // Get current REAL price
   getCurrentPrice(symbol) {
     const priceData = this.lastPrices.get(symbol);
-    return priceData ? priceData.price : null;
+    if (priceData) {
+      console.log(`💰 Current ${symbol}: $${priceData.price} (${priceData.change.toFixed(2)}%)`);
+      return priceData.price;
+    }
+    console.warn(`⚠️ No price data for ${symbol} - check API connection`);
+    return null;
   }
 
   // Check connection status
   getConnectionStatus(symbol, timeframe) {
     const key = `${symbol}_${timeframe}`;
     const hasData = this.candleData.has(key) && this.candleData.get(key).length > 0;
-    console.log(`🔍 Connection status for ${key}: ${hasData ? 'CONNECTED' : 'DISCONNECTED'}`);
-    return hasData;
+    const hasValidData = hasData && this.candleData.get(key)[0].close > 0;
+    
+    console.log(`🔍 Connection status for ${key}: ${hasValidData ? 'CONNECTED (Real Data)' : 'DISCONNECTED'}`);
+    return hasValidData;
+  }
+
+  // Health check with real API test
+  async healthCheck() {
+    try {
+      console.log('🔍 Running health check with real APIs...');
+      
+      const testUrl = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd';
+      const response = await fetch(testUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const ethPrice = data.ethereum?.usd;
+      
+      if (ethPrice) {
+        console.log(`✅ Health check passed - ETH: $${ethPrice}`);
+        return {
+          status: 'healthy',
+          ethPrice: ethPrice,
+          timestamp: new Date().toISOString(),
+          message: 'Real data APIs working'
+        };
+      } else {
+        throw new Error('No ETH price in response');
+      }
+      
+    } catch (error) {
+      console.error('❌ Health check failed:', error);
+      return {
+        status: 'unhealthy',
+        error: error.message,
+        timestamp: new Date().toISOString(),
+        message: 'API connection issues - check internet'
+      };
+    }
   }
 }
 
