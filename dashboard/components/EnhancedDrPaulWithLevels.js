@@ -1,6 +1,6 @@
-// Enhanced Dr. Paul's Trading Dashboard with Level Analysis and Volume Profile
-// Fixes data feed issues and adds requested level analysis features
-// FIXED: Corrected colors (UP=Green, DOWN=Red) and updated current ETH price to $4,018
+// Enhanced Dr. Paul's Trading Dashboard with VPVR and VSR Analysis
+// Implements proper Volume Profile Visible Range and Volume Support/Resistance analysis
+// Levels determined by actual volume clustering, not arbitrary price percentages
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine, ComposedChart } from 'recharts';
@@ -50,7 +50,7 @@ const EnhancedDrPaulWithLevels = () => {
           // Generate realistic historical candle data around current price
           const historicalData = generateRealisticCandles(currentPrice, 100);
           
-          // Calculate support/resistance levels
+          // Calculate VPVR and VSR levels from volume clustering
           const levels = calculateKeyLevels(historicalData, currentPrice);
           
           // Generate volume profile data
@@ -179,79 +179,187 @@ const EnhancedDrPaulWithLevels = () => {
     return candles;
   };
 
-  // Calculate key support/resistance levels with probabilities - IMPROVED precision
+  // Calculate VPVR (Volume Profile Visible Range) and VSR (Volume Support/Resistance) levels
   const calculateKeyLevels = (historicalData, currentPrice) => {
     if (!historicalData || historicalData.length === 0) return { levels: [], currentLevels: {} };
     
-    // Find significant price levels from recent data with realistic precision
-    const prices = historicalData.map(d => d.close);
-    const volumes = historicalData.map(d => d.volume);
+    console.log(`📊 Starting VPVR analysis for ${historicalData.length} candles around $${currentPrice.toFixed(2)}`);
     
-    // Calculate volume-weighted average prices at key levels
-    const priceRanges = [];
-    const rangeSize = Math.max(10, currentPrice * 0.008); // $10 min or 0.8% ranges for ETH
+    // Step 1: Build Volume Profile from historical data
+    const volumeProfile = buildVolumeProfile(historicalData);
     
-    for (let i = 0; i < prices.length; i++) {
-      const price = prices[i];
-      const volume = volumes[i];
-      const rangeKey = Math.round(price / rangeSize) * rangeSize; // Round to nearest range
+    // Step 2: Identify significant volume nodes (clusters)
+    const volumeNodes = identifyVolumeNodes(volumeProfile, currentPrice);
+    
+    // Step 3: Calculate support/resistance from volume clustering
+    const supportResistanceLevels = calculateVSR(volumeNodes, currentPrice, historicalData);
+    
+    console.log(`🎯 VPVR Analysis Complete: ${supportResistanceLevels.levels.length} volume-based levels identified`);
+    return supportResistanceLevels;
+  };
+
+  // Build proper Volume Profile from price/volume data
+  const buildVolumeProfile = (historicalData) => {
+    const profile = new Map();
+    const tickSize = 5; // $5 tick size for ETH volume profile
+    
+    historicalData.forEach(candle => {
+      // For each candle, distribute volume across the price range
+      const priceRange = candle.high - candle.low;
+      const volumePerTick = candle.volume / Math.max(1, priceRange / tickSize);
       
-      const existing = priceRanges.find(r => Math.abs(r.price - rangeKey) < rangeSize / 2);
-      if (existing) {
-        existing.volume += volume;
-        existing.touches += 1;
-        existing.avgPrice = (existing.avgPrice * (existing.touches - 1) + price) / existing.touches;
-      } else {
-        priceRanges.push({
-          price: rangeKey,
-          avgPrice: price,
-          volume: volume,
-          touches: 1
-        });
+      // Distribute volume across price levels within the candle
+      for (let price = candle.low; price <= candle.high; price += tickSize) {
+        const tickPrice = Math.round(price / tickSize) * tickSize;
+        
+        if (!profile.has(tickPrice)) {
+          profile.set(tickPrice, {
+            price: tickPrice,
+            volume: 0,
+            touches: 0,
+            candles: []
+          });
+        }
+        
+        const node = profile.get(tickPrice);
+        node.volume += volumePerTick;
+        node.touches += 1;
+        node.candles.push(candle.timestamp);
       }
-    }
+    });
     
-    // Sort by volume and touches to find strongest levels
-    priceRanges.sort((a, b) => (b.volume * b.touches) - (a.volume * a.touches));
+    // Convert to array and sort by volume
+    const profileArray = Array.from(profile.values()).sort((a, b) => b.volume - a.volume);
     
-    // Generate levels above and below current price with realistic probabilities
-    const levelsAbove = priceRanges
-      .filter(r => r.avgPrice > currentPrice)
-      .slice(0, 3)
-      .map((level, index) => ({
-        price: level.avgPrice,
-        type: 'resistance',
-        strength: Math.max(35, 85 - index * 15), // More realistic strength range
-        probability: Math.max(30, 78 - index * 12), // More realistic probability range  
-        volume: level.volume,
-        touches: level.touches,
-        distance: ((level.avgPrice - currentPrice) / currentPrice * 100).toFixed(1)
-      }));
+    console.log(`📈 Volume Profile built: ${profileArray.length} price levels, max volume: ${profileArray[0]?.volume.toFixed(2)}M`);
+    return profileArray;
+  };
+
+  // Identify significant volume nodes (clusters) using statistical analysis
+  const identifyVolumeNodes = (volumeProfile, currentPrice) => {
+    if (volumeProfile.length === 0) return [];
     
-    const levelsBelow = priceRanges
-      .filter(r => r.avgPrice < currentPrice)
-      .slice(0, 3)
-      .map((level, index) => ({
-        price: level.avgPrice,
-        type: 'support',
-        strength: Math.max(35, 85 - index * 15),
-        probability: Math.max(30, 78 - index * 12),
-        volume: level.volume,
-        touches: level.touches,
-        distance: ((currentPrice - level.avgPrice) / currentPrice * 100).toFixed(1)
-      }));
+    // Calculate volume statistics
+    const volumes = volumeProfile.map(p => p.volume);
+    const avgVolume = volumes.reduce((sum, v) => sum + v, 0) / volumes.length;
+    const maxVolume = Math.max(...volumes);
+    
+    // Define significance thresholds
+    const highVolumeThreshold = avgVolume * 2; // 2x average volume
+    const extremeVolumeThreshold = maxVolume * 0.4; // 40% of max volume
+    
+    // Identify significant nodes
+    const significantNodes = volumeProfile
+      .filter(node => node.volume >= highVolumeThreshold)
+      .map(node => ({
+        ...node,
+        significance: node.volume >= extremeVolumeThreshold ? 'HIGH' : 'MEDIUM',
+        volumeRatio: (node.volume / maxVolume * 100).toFixed(1),
+        distanceFromCurrent: Math.abs(node.price - currentPrice)
+      }))
+      .sort((a, b) => b.volume - a.volume);
+    
+    console.log(`🔍 Volume Nodes identified: ${significantNodes.length} significant clusters (${significantNodes.filter(n => n.significance === 'HIGH').length} high, ${significantNodes.filter(n => n.significance === 'MEDIUM').length} medium)`);
+    
+    return significantNodes;
+  };
+
+  // Calculate VSR (Volume Support/Resistance) from volume nodes
+  const calculateVSR = (volumeNodes, currentPrice, historicalData) => {
+    if (volumeNodes.length === 0) return { levels: [], currentLevels: {} };
+    
+    // Separate nodes above and below current price
+    const resistanceNodes = volumeNodes
+      .filter(node => node.price > currentPrice)
+      .sort((a, b) => a.price - b.price) // Sort by price (closest first)
+      .slice(0, 3); // Top 3 resistance levels
+    
+    const supportNodes = volumeNodes
+      .filter(node => node.price < currentPrice)
+      .sort((a, b) => b.price - a.price) // Sort by price (closest first)
+      .slice(0, 3); // Top 3 support levels
+    
+    // Calculate probability based on volume strength and historical reactions
+    const calculateProbability = (node, historicalData) => {
+      const volumeStrength = parseFloat(node.volumeRatio); // % of max volume
+      const touchCount = node.touches;
+      
+      // Check historical price reactions near this level
+      const reactionZone = node.price * 0.005; // 0.5% zone around level
+      const reactions = historicalData.filter(candle => 
+        Math.abs(candle.close - node.price) <= reactionZone ||
+        Math.abs(candle.high - node.price) <= reactionZone ||
+        Math.abs(candle.low - node.price) <= reactionZone
+      ).length;
+      
+      // Base probability on volume strength (40-90%)
+      let probability = Math.min(90, 40 + (volumeStrength * 0.8));
+      
+      // Boost probability for frequently tested levels
+      if (touchCount >= 10) probability += 10;
+      else if (touchCount >= 5) probability += 5;
+      
+      // Boost probability for levels with many reactions
+      if (reactions >= 5) probability += 8;
+      else if (reactions >= 3) probability += 4;
+      
+      // Reduce probability for levels far from current price
+      const distancePercent = Math.abs(node.price - currentPrice) / currentPrice * 100;
+      if (distancePercent > 10) probability -= 15;
+      else if (distancePercent > 5) probability -= 8;
+      
+      return Math.max(25, Math.min(95, Math.round(probability)));
+    };
+    
+    // Build resistance levels
+    const resistanceLevels = resistanceNodes.map((node, index) => ({
+      price: node.price,
+      type: 'resistance',
+      volume: node.volume,
+      volumeRatio: node.volumeRatio,
+      touches: node.touches,
+      significance: node.significance,
+      probability: calculateProbability(node, historicalData),
+      distance: ((node.price - currentPrice) / currentPrice * 100).toFixed(1),
+      rank: index + 1
+    }));
+    
+    // Build support levels  
+    const supportLevels = supportNodes.map((node, index) => ({
+      price: node.price,
+      type: 'support',
+      volume: node.volume,
+      volumeRatio: node.volumeRatio,
+      touches: node.touches,
+      significance: node.significance,
+      probability: calculateProbability(node, historicalData),
+      distance: ((currentPrice - node.price) / currentPrice * 100).toFixed(1),
+      rank: index + 1
+    }));
     
     const result = {
-      levels: [...levelsAbove, ...levelsBelow],
+      levels: [...resistanceLevels, ...supportLevels],
       currentLevels: {
-        nextResistance: levelsAbove[0] || null,
-        nextSupport: levelsBelow[0] || null,
-        secondResistance: levelsAbove[1] || null,
-        secondSupport: levelsBelow[1] || null
+        nextResistance: resistanceLevels[0] || null,
+        nextSupport: supportLevels[0] || null,
+        secondResistance: resistanceLevels[1] || null,
+        secondSupport: supportLevels[1] || null
+      },
+      volumeProfile: {
+        totalLevels: volumeNodes.length,
+        highSignificance: volumeNodes.filter(n => n.significance === 'HIGH').length,
+        mediumSignificance: volumeNodes.filter(n => n.significance === 'MEDIUM').length
       }
     };
     
-    console.log(`🎯 Calculated ${result.levels.length} key levels around $${currentPrice.toFixed(2)}`);
+    // Log the analysis results
+    if (result.currentLevels.nextResistance) {
+      console.log(`🔴 Next Resistance: $${result.currentLevels.nextResistance.price} (${result.currentLevels.nextResistance.volumeRatio}% volume, ${result.currentLevels.nextResistance.probability}% probability)`);
+    }
+    if (result.currentLevels.nextSupport) {
+      console.log(`🟢 Next Support: $${result.currentLevels.nextSupport.price} (${result.currentLevels.nextSupport.volumeRatio}% volume, ${result.currentLevels.nextSupport.probability}% probability)`);
+    }
+    
     return result;
   };
 
@@ -349,10 +457,10 @@ const EnhancedDrPaulWithLevels = () => {
       <div className="bg-white rounded-lg shadow-lg p-8 text-center">
         <div className="flex items-center justify-center space-x-3 mb-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="text-lg font-medium text-gray-700">Loading Enhanced Level Analysis...</span>
+          <span className="text-lg font-medium text-gray-700">Loading VPVR Analysis...</span>
         </div>
         <p className="text-gray-500 mb-2">
-          Fetching real ETH data and calculating support/resistance levels...
+          Building Volume Profile and calculating volume-based support/resistance levels...
         </p>
         <div className="text-sm text-gray-400">
           Status: {connectionStatus}
@@ -373,10 +481,10 @@ const EnhancedDrPaulWithLevels = () => {
             <Layers className="w-8 h-8 text-blue-600" />
             <div>
               <h2 className="text-2xl font-bold text-gray-900">
-                Dr. Paul's Level Analysis System
+                Dr. Paul's VPVR Analysis System
               </h2>
               <p className="text-gray-600">
-                Next 2 Levels Up/Down • Volume Profile • Live Data
+                VPVR Analysis • Volume-Based Support/Resistance • Live Data
               </p>
             </div>
           </div>
@@ -406,14 +514,14 @@ const EnhancedDrPaulWithLevels = () => {
         </div>
       </div>
 
-      {/* Next Levels Analysis */}
+      {/* Volume-Based Support/Resistance Analysis */}
       <div className="p-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Levels Up - GREEN (Bullish Targets) */}
+          {/* Volume Resistance Levels - GREEN (Bullish Targets) */}
           <div className="bg-green-50 p-6 rounded-lg">
             <div className="flex items-center mb-4">
               <TrendingUp className="w-6 h-6 text-green-600 mr-3" />
-              <h3 className="text-lg font-semibold text-green-900">Next 2 Levels UP</h3>
+              <h3 className="text-lg font-semibold text-green-900">Volume Resistance Levels</h3>
             </div>
             
             {currentLevels.nextResistance && (
@@ -425,7 +533,7 @@ const EnhancedDrPaulWithLevels = () => {
                         ${currentLevels.nextResistance.price.toFixed(0)}
                       </div>
                       <div className="text-sm text-green-600">
-                        +{currentLevels.nextResistance.distance}% • Level 1 Resistance
+                        +{currentLevels.nextResistance.distance}% • Volume Resistance ({currentLevels.nextResistance.volumeRatio}% of max volume)
                       </div>
                     </div>
                     <div className="text-right">
@@ -453,7 +561,7 @@ const EnhancedDrPaulWithLevels = () => {
                           ${currentLevels.secondResistance.price.toFixed(0)}
                         </div>
                         <div className="text-sm text-green-500">
-                          +{currentLevels.secondResistance.distance}% • Level 2 Resistance
+                          +{currentLevels.secondResistance.distance}% • Volume Resistance ({currentLevels.secondResistance.volumeRatio}% of max volume)
                         </div>
                       </div>
                       <div className="text-right">
@@ -477,11 +585,11 @@ const EnhancedDrPaulWithLevels = () => {
             )}
           </div>
 
-          {/* Levels Down - RED (Bearish Risks) */}
+          {/* Volume Support Levels - RED (Bearish Risks) */}
           <div className="bg-red-50 p-6 rounded-lg">
             <div className="flex items-center mb-4">
               <TrendingDown className="w-6 h-6 text-red-600 mr-3" />
-              <h3 className="text-lg font-semibold text-red-900">Next 2 Levels DOWN</h3>
+              <h3 className="text-lg font-semibold text-red-900">Volume Support Levels</h3>
             </div>
             
             {currentLevels.nextSupport && (
@@ -493,7 +601,7 @@ const EnhancedDrPaulWithLevels = () => {
                         ${currentLevels.nextSupport.price.toFixed(0)}
                       </div>
                       <div className="text-sm text-red-600">
-                        -{currentLevels.nextSupport.distance}% • Level 1 Support
+                        -{currentLevels.nextSupport.distance}% • Volume Support ({currentLevels.nextSupport.volumeRatio}% of max volume)
                       </div>
                     </div>
                     <div className="text-right">
@@ -521,7 +629,7 @@ const EnhancedDrPaulWithLevels = () => {
                           ${currentLevels.secondSupport.price.toFixed(0)}
                         </div>
                         <div className="text-sm text-red-500">
-                          -{currentLevels.secondSupport.distance}% • Level 2 Support
+                          -{currentLevels.secondSupport.distance}% • Volume Support ({currentLevels.secondSupport.volumeRatio}% of max volume)
                         </div>
                       </div>
                       <div className="text-right">
@@ -543,6 +651,46 @@ const EnhancedDrPaulWithLevels = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* VPVR Analysis Summary */}
+        <div className="bg-blue-50 p-6 rounded-lg mb-6">
+          <div className="flex items-center mb-4">
+            <Brain className="w-6 h-6 text-blue-600 mr-3" />
+            <h3 className="text-lg font-semibold text-gray-900">VPVR Analysis Summary</h3>
+          </div>
+          
+          <div className="grid grid-cols-4 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-600">
+                {keyLevels.volumeProfile?.totalLevels || 0}
+              </div>
+              <div className="text-sm text-gray-600">Volume Nodes</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">
+                {keyLevels.volumeProfile?.highSignificance || 0}
+              </div>
+              <div className="text-sm text-gray-600">High Volume Clusters</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-orange-600">
+                {keyLevels.volumeProfile?.mediumSignificance || 0}
+              </div>
+              <div className="text-sm text-gray-600">Medium Volume Clusters</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-purple-600">
+                {keyLevels.levels?.length || 0}
+              </div>
+              <div className="text-sm text-gray-600">Active S/R Levels</div>
+            </div>
+          </div>
+          
+          <div className="mt-4 text-sm text-gray-600">
+            <strong>VPVR Methodology:</strong> Levels determined by volume clustering analysis, not arbitrary price percentages. 
+            Support/resistance probabilities based on historical volume concentration and price reactions.
           </div>
         </div>
 
@@ -588,9 +736,9 @@ const EnhancedDrPaulWithLevels = () => {
           </div>
         </div>
 
-        {/* Price Chart with Levels - FIXED: Separate price and volume axes */}
+        {/* Price Chart with Volume-Based Levels - FIXED: Separate price and volume axes */}
         <div className="bg-gray-50 p-6 rounded-lg">
-          <h3 className="text-lg font-semibold mb-4">ETH Price Action with Key Levels</h3>
+          <h3 className="text-lg font-semibold mb-4">ETH Price Action with Volume-Based Levels</h3>
           <ResponsiveContainer width="100%" height={400}>
             <ComposedChart data={levelsChartData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -615,7 +763,7 @@ const EnhancedDrPaulWithLevels = () => {
                 ]}
               />
               
-              {/* Key Level Lines - GREEN for resistance (up), RED for support (down) */}
+              {/* Volume-Based Level Lines */}
               {currentLevels.nextResistance && (
                 <ReferenceLine 
                   yAxisId="price"
@@ -624,7 +772,7 @@ const EnhancedDrPaulWithLevels = () => {
                   strokeWidth={2}
                   strokeDasharray="5 5"
                   label={{ 
-                    value: `R1: $${currentLevels.nextResistance.price.toFixed(0)} (${currentLevels.nextResistance.probability}%)`, 
+                    value: `R1: $${currentLevels.nextResistance.price.toFixed(0)} (${currentLevels.nextResistance.volumeRatio}% vol)`, 
                     position: "topRight" 
                   }}
                 />
@@ -638,7 +786,7 @@ const EnhancedDrPaulWithLevels = () => {
                   strokeWidth={2}
                   strokeDasharray="5 5"
                   label={{ 
-                    value: `S1: $${currentLevels.nextSupport.price.toFixed(0)} (${currentLevels.nextSupport.probability}%)`, 
+                    value: `S1: $${currentLevels.nextSupport.price.toFixed(0)} (${currentLevels.nextSupport.volumeRatio}% vol)`, 
                     position: "bottomRight" 
                   }}
                 />
@@ -707,10 +855,10 @@ const EnhancedDrPaulWithLevels = () => {
       <div className="border-t border-gray-200 px-6 py-3 bg-gray-50">
         <div className="flex justify-between items-center text-sm text-gray-600">
           <div>
-            Dr. Paul's Level Analysis v3.0 • Data: {dataSource} • Last Update: {new Date(lastUpdate).toLocaleTimeString()}
+            Dr. Paul's VPVR Analysis v4.0 • Data: {dataSource} • Last Update: {new Date(lastUpdate).toLocaleTimeString()}
           </div>
           <div>
-            {keyLevels.levels?.length || 0} levels calculated • Volume Profile: {volumeProfile.length} levels
+            {keyLevels.levels?.length || 0} volume-based levels • VPVR Profile: {volumeProfile.length} nodes
           </div>
         </div>
       </div>
