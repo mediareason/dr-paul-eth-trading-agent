@@ -1,20 +1,28 @@
 import React, { useState } from 'react';
 import DrPaulLiveDashboard from '../components/DrPaulDashboard';
 import EnhancedDrPaulDashboard from '../components/EnhancedDrPaulDashboard';
+import EnhancedDrPaulWithLevels from '../components/EnhancedDrPaulWithLevels';
 import InteractiveBacktester from '../components/InteractiveBacktester';
 import ScalpingTracker from '../components/ScalpingTracker';
-import { BarChart3, TestTube, Activity, Brain, Zap, Volume2, TrendingUp } from 'lucide-react';
+import { BarChart3, TestTube, Activity, Brain, Zap, Volume2, TrendingUp, Layers } from 'lucide-react';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('enhanced');
+  const [activeTab, setActiveTab] = useState('levels');
 
   const tabs = [
+    {
+      id: 'levels',
+      name: 'Level Analysis',
+      icon: Layers,
+      description: 'Next 2 levels up/down with probabilities • Volume profile bars • Fixed live data',
+      badge: 'NEW'
+    },
     {
       id: 'enhanced',
       name: 'Enhanced Analysis',
       icon: Volume2,
       description: 'Dr. Paul\'s methodology enhanced with Volume Profile, POC, and level-to-level signals',
-      badge: 'NEW'
+      badge: null
     },
     {
       id: 'live',
@@ -49,7 +57,7 @@ export default function Home() {
                 <h1 className="text-xl font-bold text-gray-900">
                   Dr. Paul's ETH Trading System
                 </h1>
-                <p className="text-xs text-gray-500">Enhanced with Volume Profile Intelligence</p>
+                <p className="text-xs text-gray-500">Enhanced with Level Analysis & Volume Profile Intelligence</p>
               </div>
             </div>
             
@@ -107,24 +115,57 @@ export default function Home() {
       <div className="flex-1 p-6">
         <div className="max-w-7xl mx-auto">
           {/* Tab Content */}
-          {activeTab === 'enhanced' && (
+          {activeTab === 'levels' && (
             <div className="space-y-6">
               {/* Quick Stats Header */}
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-white">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold mb-2">Enhanced Volume Profile Analysis</h2>
+                    <h2 className="text-2xl font-bold mb-2">Enhanced Level Analysis</h2>
                     <p className="text-blue-100">
+                      Real-time support/resistance calculation with probability analysis and volume profile visualization.
+                      Fixed data feed ensures accurate ETH prices without fallback to mock data.
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <div className="text-sm text-blue-200">Analysis Type</div>
+                      <div className="font-bold">Level-to-Level + Volume Profile</div>
+                    </div>
+                    <Layers className="w-12 h-12 text-blue-200" />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Enhanced Dashboard with Levels */}
+              <EnhancedDrPaulWithLevels 
+                className="shadow-xl"
+                onTradeSignal={(signal) => {
+                  console.log('🎯 Level Analysis Signal:', signal);
+                  // Handle trade signal execution here
+                }}
+              />
+            </div>
+          )}
+          
+          {activeTab === 'enhanced' && (
+            <div className="space-y-6">
+              {/* Quick Stats Header */}
+              <div className="bg-gradient-to-r from-green-600 to-teal-600 rounded-lg p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">Enhanced Volume Profile Analysis</h2>
+                    <p className="text-green-100">
                       Institutional-grade trading intelligence combining Dr. Paul's methodology with Volume Profile, 
                       Point of Control (POC), and level-to-level entry/exit signals.
                     </p>
                   </div>
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
-                      <div className="text-sm text-blue-200">Analysis Type</div>
+                      <div className="text-sm text-green-200">Analysis Type</div>
                       <div className="font-bold">VPVR + Session Profiles</div>
                     </div>
-                    <Volume2 className="w-12 h-12 text-blue-200" />
+                    <Volume2 className="w-12 h-12 text-green-200" />
                   </div>
                 </div>
               </div>
@@ -143,20 +184,20 @@ export default function Home() {
           {activeTab === 'live' && (
             <div className="space-y-6">
               {/* Original Dashboard Header */}
-              <div className="bg-gradient-to-r from-green-600 to-teal-600 rounded-lg p-6 text-white">
+              <div className="bg-gradient-to-r from-orange-600 to-red-600 rounded-lg p-6 text-white">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-bold mb-2">Dr. Paul's Live Trading Dashboard</h2>
-                    <p className="text-green-100">
+                    <p className="text-orange-100">
                       Real-time ETH analysis using Dr. Paul's counter-trend methodology with whale accumulation tracking.
                     </p>
                   </div>
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
-                      <div className="text-sm text-green-200">Analysis Type</div>
+                      <div className="text-sm text-orange-200">Analysis Type</div>
                       <div className="font-bold">Counter-Trend + Whale Tracking</div>
                     </div>
-                    <TrendingUp className="w-12 h-12 text-green-200" />
+                    <TrendingUp className="w-12 h-12 text-orange-200" />
                   </div>
                 </div>
               </div>
@@ -210,14 +251,18 @@ export default function Home() {
             <div className="flex items-center space-x-4">
               <Brain className="w-5 h-5 text-blue-600" />
               <span className="text-sm text-gray-600">
-                Dr. Paul's Enhanced Trading System v2.0
+                Dr. Paul's Enhanced Trading System v3.0
               </span>
             </div>
             
             <div className="flex items-center space-x-6 text-sm text-gray-500">
               <div className="flex items-center">
                 <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                Data: Binance + CoinGecko APIs
+                Data: CoinGecko API (Fixed)
+              </div>
+              <div className="flex items-center">
+                <Layers className="w-4 h-4 mr-1" />
+                Level Analysis: Active
               </div>
               <div className="flex items-center">
                 <Volume2 className="w-4 h-4 mr-1" />
