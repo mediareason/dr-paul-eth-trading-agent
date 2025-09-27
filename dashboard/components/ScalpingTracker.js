@@ -261,6 +261,19 @@ const ScalpingTracker = () => {
     return symbolMap[symbol] || symbol.replace('USDT', '');
   };
 
+  // Get timeframe display text
+  const getTimeframeDisplay = (tf) => {
+    const timeframeMap = {
+      '1m': '1 Minute',
+      '3m': '3 Minutes', 
+      '5m': '5 Minutes',
+      '15m': '15 Minutes',
+      '30m': '30 Minutes',
+      '1h': '1 Hour'
+    };
+    return timeframeMap[tf] || tf;
+  };
+
   const latestData = priceData[priceData.length - 1];
   const trendDirection = latestData && latestData.ema9 && latestData.sma21 && latestData.ema9 > latestData.sma21 ? 'UP' : 'DOWN';
   const recentChange = priceData.length > 1 ? 
@@ -306,7 +319,7 @@ const ScalpingTracker = () => {
             </span>
           </div>
         </div>
-        <p className="text-gray-600">Real-time scalping signals • Adaptive data analysis • Professional moving averages</p>
+        <p className="text-gray-600">Real-time scalping signals • Multi-timeframe analysis • Professional moving averages</p>
       </div>
 
       {/* Error Display */}
@@ -331,7 +344,7 @@ const ScalpingTracker = () => {
             <span className="font-semibold text-blue-800">Data Status</span>
           </div>
           <div className="text-blue-700 text-sm mt-1">
-            Working with {priceData.length} data points • 
+            Working with {priceData.length} data points • {getTimeframeDisplay(timeframe)} •
             {priceData.length >= 200 ? ' Full analysis available' : 
              priceData.length >= 21 ? ' Medium-term signals available' :
              priceData.length >= 9 ? ' Short-term signals available' :
@@ -369,6 +382,8 @@ const ScalpingTracker = () => {
             <option value="3m">3 Minutes</option>
             <option value="5m">5 Minutes</option>
             <option value="15m">15 Minutes</option>
+            <option value="30m">30 Minutes</option>
+            <option value="1h">1 Hour</option>
           </select>
         </div>
 
@@ -438,7 +453,7 @@ const ScalpingTracker = () => {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <BarChart3 className="w-5 h-5" />
-            Live {getDisplaySymbol(symbol)} Chart • {timeframe} Timeframe • {priceData.length} Data Points
+            Live {getDisplaySymbol(symbol)} Chart • {getTimeframeDisplay(timeframe)} • {priceData.length} Data Points
           </h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -575,7 +590,7 @@ const ScalpingTracker = () => {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
         <h4 className="font-semibold mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" />
-          Adaptive Scalping Strategy • Works with Available Data
+          Multi-Timeframe Scalping Strategy • Works with Available Data
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
@@ -584,7 +599,7 @@ const ScalpingTracker = () => {
               <li>9 EMA crosses above 21 MA (momentum shift)</li>
               <li>Price above 200 MA = STRONG | Limited data = DEVELOPING</li>
               <li>Risk: 0.5% | Target: 1.5% (3:1 reward/risk)</li>
-              <li>Adaptive analysis works with 21+ data points</li>
+              <li>Works with 1m to 1h timeframes</li>
             </ul>
           </div>
           <div>
@@ -593,14 +608,14 @@ const ScalpingTracker = () => {
               <li>9 EMA crosses below 21 MA (momentum shift)</li>
               <li>Price below 200 MA = STRONG | Limited data = DEVELOPING</li>
               <li>Risk: 0.5% | Target: 1.5% (3:1 reward/risk)</li>
-              <li>Real market volatility analysis included</li>
+              <li>Adaptive analysis for all timeframes</li>
             </ul>
           </div>
         </div>
         <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-          <strong className="text-blue-800">📊 Adaptive Analysis:</strong>
+          <strong className="text-blue-800">🔄 Multi-Timeframe Analysis:</strong>
           <span className="text-blue-700 text-sm ml-2">
-            This tracker adapts to available data - shows basic info with limited data, full analysis with 200+ points.
+            Now supports 30m and 1h timeframes for medium-term scalping opportunities. Higher timeframes provide stronger signals with wider targets.
           </span>
         </div>
       </div>
