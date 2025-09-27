@@ -4,18 +4,26 @@ import EnhancedDrPaulDashboard from '../components/EnhancedDrPaulDashboard';
 import EnhancedDrPaulWithLevels from '../components/EnhancedDrPaulWithLevels';
 import InteractiveBacktester from '../components/InteractiveBacktester';
 import ScalpingTracker from '../components/ScalpingTracker';
-import { BarChart3, TestTube, Activity, Brain, Zap, Volume2, TrendingUp, Layers } from 'lucide-react';
+import SmartAlertSystem from '../components/SmartAlertSystem';
+import { BarChart3, TestTube, Activity, Brain, Zap, Volume2, TrendingUp, Layers, BellRing } from 'lucide-react';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('levels');
 
   const tabs = [
     {
+      id: 'alerts',
+      name: 'Smart Alerts',
+      icon: BellRing,
+      description: 'Real-time threshold monitoring • Dr. Paul Score alerts • Volume level notifications • Browser & audio alerts',
+      badge: 'NEW'
+    },
+    {
       id: 'levels',
       name: 'Level Analysis',
       icon: Layers,
       description: 'Next 2 levels up/down with probabilities • Volume profile bars • Fixed live data',
-      badge: 'NEW'
+      badge: null
     },
     {
       id: 'enhanced',
@@ -40,7 +48,7 @@ export default function Home() {
       id: 'scalping',
       name: 'Scalping Tracker',
       icon: Zap,
-      description: 'Fast scalping signals with 9 EMA, 21 MA & 200 MA crossovers'
+      description: 'Fast scalping signals with 9 EMA, 21 MA & 200 MA crossovers (30m/1h timeframes added)'
     }
   ];
 
@@ -57,7 +65,7 @@ export default function Home() {
                 <h1 className="text-xl font-bold text-gray-900">
                   Dr. Paul's ETH Trading System
                 </h1>
-                <p className="text-xs text-gray-500">Enhanced with Level Analysis & Volume Profile Intelligence</p>
+                <p className="text-xs text-gray-500">Enhanced with Smart Alerts & Level Analysis Intelligence</p>
               </div>
             </div>
             
@@ -76,14 +84,14 @@ export default function Home() {
           
           {/* Tab Navigation */}
           <div className="border-t border-gray-100 pt-4 pb-4">
-            <nav className="flex space-x-1">
+            <nav className="flex space-x-1 overflow-x-auto">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`relative flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`relative flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
                       activeTab === tab.id
                         ? 'bg-blue-600 text-white shadow-md'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
@@ -115,24 +123,51 @@ export default function Home() {
       <div className="flex-1 p-6">
         <div className="max-w-7xl mx-auto">
           {/* Tab Content */}
+          {activeTab === 'alerts' && (
+            <div className="space-y-6">
+              {/* Smart Alerts Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">Smart Alert System</h2>
+                    <p className="text-blue-100">
+                      Real-time monitoring of Dr. Paul Score thresholds, volume level interactions, and technical signals.
+                      Get notified instantly when trading opportunities meet your criteria.
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <div className="text-sm text-blue-200">Alert Types</div>
+                      <div className="font-bold">Score • Levels • Signals</div>
+                    </div>
+                    <BellRing className="w-12 h-12 text-blue-200" />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Smart Alert System */}
+              <SmartAlertSystem />
+            </div>
+          )}
+          
           {activeTab === 'levels' && (
             <div className="space-y-6">
               {/* Quick Stats Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-white">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg p-6 text-white">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-bold mb-2">Enhanced Level Analysis</h2>
-                    <p className="text-blue-100">
+                    <p className="text-purple-100">
                       Real-time support/resistance calculation with probability analysis and volume profile visualization.
                       Fixed data feed ensures accurate ETH prices without fallback to mock data.
                     </p>
                   </div>
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
-                      <div className="text-sm text-blue-200">Analysis Type</div>
+                      <div className="text-sm text-purple-200">Analysis Type</div>
                       <div className="font-bold">Level-to-Level + Volume Profile</div>
                     </div>
-                    <Layers className="w-12 h-12 text-blue-200" />
+                    <Layers className="w-12 h-12 text-purple-200" />
                   </div>
                 </div>
               </div>
@@ -208,15 +243,15 @@ export default function Home() {
           
           {activeTab === 'backtest' && (
             <div className="space-y-6">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg p-6 text-white">
+              <div className="bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg p-6 text-white">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-bold mb-2">Interactive Strategy Backtester</h2>
-                    <p className="text-purple-100">
+                    <p className="text-violet-100">
                       Step-by-step visualization and testing of Dr. Paul's trading methodology with historical data.
                     </p>
                   </div>
-                  <TestTube className="w-12 h-12 text-purple-200" />
+                  <TestTube className="w-12 h-12 text-violet-200" />
                 </div>
               </div>
               
@@ -231,7 +266,7 @@ export default function Home() {
                   <div>
                     <h2 className="text-2xl font-bold mb-2">High-Frequency Scalping Tracker</h2>
                     <p className="text-yellow-100">
-                      Fast-paced scalping signals using moving average crossovers and momentum indicators.
+                      Fast-paced scalping signals with 30m/1h timeframes added for medium-term analysis. Moving average crossovers and momentum indicators.
                     </p>
                   </div>
                   <Zap className="w-12 h-12 text-yellow-200" />
@@ -251,14 +286,18 @@ export default function Home() {
             <div className="flex items-center space-x-4">
               <Brain className="w-5 h-5 text-blue-600" />
               <span className="text-sm text-gray-600">
-                Dr. Paul's Enhanced Trading System v3.0
+                Dr. Paul's Enhanced Trading System v4.0
               </span>
             </div>
             
             <div className="flex items-center space-x-6 text-sm text-gray-500">
               <div className="flex items-center">
                 <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                Data: CoinGecko API (Fixed)
+                Data: CoinGecko API
+              </div>
+              <div className="flex items-center">
+                <BellRing className="w-4 h-4 mr-1" />
+                Smart Alerts: Active
               </div>
               <div className="flex items-center">
                 <Layers className="w-4 h-4 mr-1" />
