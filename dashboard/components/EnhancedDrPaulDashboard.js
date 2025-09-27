@@ -2,13 +2,12 @@
 // Dr. Paul's Trading Dashboard Enhanced with Volume Profile Analysis
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine, ComposedChart, Area, AreaChart } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine, ComposedChart } from 'recharts';
 import { Activity, Target, TrendingUp, TrendingDown, AlertTriangle, Volume2, Eye, Brain, DollarSign, Signal } from 'lucide-react';
 import VolumeProfileService from '../lib/volumeProfileService';
+import enhancedDataService from '../lib/enhancedDataService';
 
 const EnhancedDrPaulDashboard = ({ 
-  liveData, 
-  drPaulSignals, 
   onTradeSignal,
   className = '' 
 }) => {
@@ -20,35 +19,48 @@ const EnhancedDrPaulDashboard = ({
     autoUpdate: true
   });
   
+  const [liveData, setLiveData] = useState(null);
   const [volumeAnalysis, setVolumeAnalysis] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
 
-  // Calculate volume profile analysis
+  // Subscribe to enhanced live data
+  useEffect(() => {
+    console.log('🔌 Connecting to enhanced data service...');
+    setConnectionStatus('CONNECTING');
+    
+    const unsubscribe = enhancedDataService.subscribe('ETHUSDT', (data) => {
+      console.log('📊 Enhanced data received:', data);
+      setLiveData(data);
+      setConnectionStatus('CONNECTED');
+      setLastUpdate(Date.now());
+    });
+
+    return () => {
+      console.log('🔌 Disconnecting from enhanced data service');
+      unsubscribe();
+    };
+  }, []);
+
+  // Calculate volume profile analysis when data updates
   useEffect(() => {
     if (liveData && volumeProfileSettings.autoUpdate) {
       const updateVolumeAnalysis = async () => {
         try {
-          const analysis = await VolumeProfileService.updateFromLiveData({
-            ...liveData,
-            drPaulSignals
-          });
+          const analysis = await VolumeProfileService.updateFromLiveData(liveData);
           
           if (analysis) {
             setVolumeAnalysis(analysis);
-            setLastUpdate(Date.now());
+            console.log('📈 Volume analysis updated:', analysis);
           }
         } catch (error) {
-          console.error('Volume analysis update failed:', error);
+          console.error('❌ Volume analysis update failed:', error);
         }
       };
 
       updateVolumeAnalysis();
-      
-      // Auto-update every 30 seconds
-      const interval = setInterval(updateVolumeAnalysis, 30000);
-      return () => clearInterval(interval);
     }
-  }, [liveData, drPaulSignals, volumeProfileSettings.autoUpdate]);
+  }, [liveData, volumeProfileSettings.autoUpdate]);
 
   // Prepare enhanced chart data
   const enhancedChartData = useMemo(() => {
@@ -58,8 +70,7 @@ const EnhancedDrPaulDashboard = ({
     const data = liveData.historicalData.slice(-range);
     
     return data.map((candle, idx) => ({
-      time: new Date(candle.timestamp).toLocaleTimeString(),
-      timeShort: new Date(candle.timestamp).toLocaleTimeString().slice(0, -3),
+      time: new Date(candle.timestamp).toLocaleTimeString().slice(0, -3),
       price: candle.close || candle.price,
       open: candle.open || candle.price,
       high: candle.high || candle.price,
@@ -76,6 +87,7 @@ const EnhancedDrPaulDashboard = ({
   const currentPrice = liveData?.currentPrice || 0;
   const priceChange24h = liveData?.priceChange24h || 0;
   const volume24h = liveData?.volume24h || 0;
+  const drPaulSignals = liveData?.drPaulSignals || {};
 
   // Dr. Paul's enhanced signals with volume context
   const enhancedSignals = useMemo(() => {
@@ -121,7 +133,8 @@ const EnhancedDrPaulDashboard = ({
         type: 'DR_PAUL_SETUP',
         confidence: enhancedSignals.signalQuality || 50
       };
-      signals.reasoning.push(`Dr. Paul ${enhancedSignals.trend} setup`);
+      signals.confidence = enhancedSignals.overallScore || enhancedSignals.signalQuality || 50;
+      signals.reasoning.push(`Dr. Paul ${enhancedSignals.trend} setup (${enhancedSignals.overallScore || enhancedSignals.signalQuality || 50}%)`);
     }
 
     // Volume profile enhancement
@@ -140,7 +153,7 @@ const EnhancedDrPaulDashboard = ({
       // Volume context boost
       if (vpSignals.marketContext?.bias !== 'NEUTRAL') {
         signals.confidence = Math.min(100, signals.confidence + 15);
-        signals.reasoning.push(`Volume bias: ${vpSignals.marketContext.bias}`);
+        signals.reasoning.push(`Volume bias: ${vpSignals.marketContext.bias.replace('_', ' ')}`);
       }
     }
 
@@ -153,6 +166,24 @@ const EnhancedDrPaulDashboard = ({
     { id: 'LEVELS', name: 'Trading Levels', icon: Target },
     { id: 'SIGNALS', name: 'Combined Signals', icon: Signal }
   ];
+
+  // Loading state
+  if (!liveData) {
+    return (
+      <div className={`bg-white rounded-lg shadow-lg p-8 text-center ${className}`}>
+        <div className="flex items-center justify-center space-x-3 mb-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="text-lg font-medium text-gray-700">Loading Enhanced Analysis...</span>
+        </div>
+        <p className="text-gray-500">
+          Initializing Volume Profile system and Dr. Paul's methodology
+        </p>
+        <div className="mt-4 text-sm text-gray-400">
+          Connecting to live data feeds • Calculating technical indicators • Processing volume analysis
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`bg-white rounded-lg shadow-lg ${className}`}>
@@ -172,6 +203,14 @@ const EnhancedDrPaulDashboard = ({
           </div>
           
           <div className="flex items-center space-x-4">
+            {/* Connection Status */}
+            <div className="flex items-center text-sm text-gray-600">
+              <div className={`w-2 h-2 rounded-full mr-2 ${
+                connectionStatus === 'CONNECTED' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'
+              }`}></div>
+              {connectionStatus}
+            </div>
+            
             {/* Current Price Display */}
             <div className="text-right">
               <div className="text-2xl font-bold text-gray-900">
@@ -242,7 +281,7 @@ const EnhancedDrPaulDashboard = ({
                   <div>
                     <p className="text-sm text-green-600 font-medium">Dr. Paul Score</p>
                     <p className="text-xl font-bold text-green-900">
-                      {enhancedSignals?.signalQuality || 0}%
+                      {enhancedSignals?.overallScore || enhancedSignals?.signalQuality || 0}%
                     </p>
                   </div>
                   <Brain className="w-6 h-6 text-green-600" />
@@ -276,11 +315,11 @@ const EnhancedDrPaulDashboard = ({
 
             {/* Main Chart */}
             <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-3">Enhanced Price Action</h3>
+              <h3 className="text-lg font-semibold mb-3">Enhanced Price Action with Volume Levels</h3>
               <ResponsiveContainer width="100%" height={400}>
                 <ComposedChart data={enhancedChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timeShort" />
+                  <XAxis dataKey="time" />
                   <YAxis domain={['dataMin - 50', 'dataMax + 50']} />
                   <Tooltip 
                     formatter={(value, name) => [
@@ -295,7 +334,7 @@ const EnhancedDrPaulDashboard = ({
                       y={volumeAnalysis.keyLevels.poc.price} 
                       stroke="#3B82F6" 
                       strokeWidth={3}
-                      label={{ value: "POC", position: "right" }}
+                      label={{ value: `POC $${volumeAnalysis.keyLevels.poc.price.toFixed(0)}`, position: "right" }}
                     />
                   )}
                   
@@ -304,7 +343,7 @@ const EnhancedDrPaulDashboard = ({
                       y={volumeAnalysis.keyLevels.vah.price} 
                       stroke="#10B981" 
                       strokeDasharray="5 5"
-                      label={{ value: "VAH", position: "right" }}
+                      label={{ value: `VAH $${volumeAnalysis.keyLevels.vah.price.toFixed(0)}`, position: "right" }}
                     />
                   )}
                   
@@ -313,34 +352,38 @@ const EnhancedDrPaulDashboard = ({
                       y={volumeAnalysis.keyLevels.val.price} 
                       stroke="#EF4444" 
                       strokeDasharray="5 5"
-                      label={{ value: "VAL", position: "right" }}
+                      label={{ value: `VAL $${volumeAnalysis.keyLevels.val.price.toFixed(0)}`, position: "right" }}
                     />
                   )}
 
                   {/* Moving Averages */}
-                  <Line 
-                    type="monotone" 
-                    dataKey="ma9" 
-                    stroke="#F59E0B" 
-                    strokeWidth={1}
-                    dot={false}
-                    name="9 EMA"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="ma21" 
-                    stroke="#8B5CF6" 
-                    strokeWidth={1}
-                    dot={false}
-                    name="21 MA"
-                  />
+                  {enhancedChartData[0]?.ma9 && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="ma9" 
+                      stroke="#F59E0B" 
+                      strokeWidth={2}
+                      dot={false}
+                      name="9 EMA"
+                    />
+                  )}
+                  {enhancedChartData[0]?.ma21 && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="ma21" 
+                      stroke="#8B5CF6" 
+                      strokeWidth={2}
+                      dot={false}
+                      name="21 MA"
+                    />
+                  )}
                   
                   {/* Price Line */}
                   <Line 
                     type="monotone" 
                     dataKey="price" 
                     stroke="#1F2937" 
-                    strokeWidth={2}
+                    strokeWidth={3}
                     dot={false}
                     name="Price"
                   />
@@ -365,9 +408,9 @@ const EnhancedDrPaulDashboard = ({
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Setup Quality:</span>
+                      <span className="text-sm text-gray-600">Overall Score:</span>
                       <span className="text-sm font-medium">
-                        {enhancedSignals?.signalQuality || 0}%
+                        {enhancedSignals?.overallScore || enhancedSignals?.signalQuality || 0}%
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -376,6 +419,12 @@ const EnhancedDrPaulDashboard = ({
                         enhancedSignals?.entrySignal ? 'text-green-600' : 'text-gray-600'
                       }`}>
                         {enhancedSignals?.entrySignal ? 'Active' : 'Waiting'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Whale Activity:</span>
+                      <span className="text-sm font-medium">
+                        {enhancedSignals?.whaleAccumulation || 0}%
                       </span>
                     </div>
                   </div>
@@ -402,6 +451,15 @@ const EnhancedDrPaulDashboard = ({
                         {volumeAnalysis?.signals?.levelStrength || 0}%
                       </span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Combined Confidence:</span>
+                      <span className={`text-sm font-medium ${
+                        combinedSignals.confidence > 70 ? 'text-green-600' :
+                        combinedSignals.confidence > 40 ? 'text-yellow-600' : 'text-red-600'
+                      }`}>
+                        {combinedSignals.confidence.toFixed(0)}%
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -409,6 +467,7 @@ const EnhancedDrPaulDashboard = ({
           </div>
         )}
 
+        {/* Simplified Volume Profile View */}
         {activeView === 'VOLUME_PROFILE' && volumeAnalysis && (
           <div className="space-y-6">
             {/* VPVR Controls */}
@@ -450,81 +509,68 @@ const EnhancedDrPaulDashboard = ({
               </div>
             </div>
 
-            {/* Volume Profile Visualization */}
-            <div className="grid grid-cols-2 gap-6">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-semibold mb-3">Volume Profile (VPVR)</h3>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart 
-                    data={volumeAnalysis.vpvr.levels
-                      .sort((a, b) => a.price - b.price)
-                      .slice(0, 30)
-                      .map(level => ({
-                        price: level.price.toFixed(0),
-                        volume: level.volume,
-                        isPOC: level === volumeAnalysis.vpvr.poc,
-                        isVAH: level === volumeAnalysis.vpvr.vah,
-                        isVAL: level === volumeAnalysis.vpvr.val
-                      }))}
-                    layout="verstack"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="volume" type="number" />
-                    <YAxis dataKey="price" type="category" />
-                    <Tooltip 
-                      formatter={(value) => [
-                        `${(value / 1000000).toFixed(1)}M`,
-                        'Volume'
-                      ]}
-                    />
-                    <Bar dataKey="volume">
-                      {volumeAnalysis.vpvr.levels.slice(0, 30).map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={
-                            entry === volumeAnalysis.vpvr.poc ? '#3B82F6' :
-                            entry === volumeAnalysis.vpvr.vah ? '#10B981' :
-                            entry === volumeAnalysis.vpvr.val ? '#EF4444' :
-                            '#9CA3AF'
-                          }
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-semibold mb-3">Session Profiles</h3>
-                <div className="space-y-3">
-                  {volumeAnalysis.sessions.slice(-5).map((session, idx) => (
-                    <div key={idx} className="bg-white p-3 rounded border">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="font-medium">
-                          Session {idx + 1}
-                        </span>
-                        <span className="text-sm text-gray-600">
-                          POC: ${session.pocPrice.toFixed(0)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm text-gray-600 mb-1">
-                        <span>Strength: {session.sessionStrength.toFixed(0)}%</span>
-                        <span>Volume: {(session.profile.totalVolume / 1000000).toFixed(1)}M</span>
-                      </div>
-                      <div className="h-2 bg-gray-200 rounded-full">
-                        <div 
-                          className="h-2 bg-blue-600 rounded-full transition-all"
-                          style={{ width: `${Math.min(100, session.sessionStrength)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+            {/* Volume Profile Summary */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-blue-50 p-4 rounded-lg text-center">
+                <h4 className="font-medium text-blue-700 mb-2">Point of Control (POC)</h4>
+                <div className="text-2xl font-bold text-blue-900">
+                  ${volumeAnalysis.keyLevels?.poc?.price.toFixed(2) || 'N/A'}
                 </div>
+                <div className="text-sm text-blue-600">
+                  Highest Volume: {volumeAnalysis.keyLevels?.poc ? 
+                    (volumeAnalysis.keyLevels.poc.volume / 1000000).toFixed(1) + 'M' : 'N/A'}
+                </div>
+              </div>
+              
+              <div className="bg-green-50 p-4 rounded-lg text-center">
+                <h4 className="font-medium text-green-700 mb-2">Value Area High (VAH)</h4>
+                <div className="text-2xl font-bold text-green-900">
+                  ${volumeAnalysis.keyLevels?.vah?.price.toFixed(2) || 'N/A'}
+                </div>
+                <div className="text-sm text-green-600">
+                  70% Volume Upper Bound
+                </div>
+              </div>
+              
+              <div className="bg-red-50 p-4 rounded-lg text-center">
+                <h4 className="font-medium text-red-700 mb-2">Value Area Low (VAL)</h4>
+                <div className="text-2xl font-bold text-red-900">
+                  ${volumeAnalysis.keyLevels?.val?.price.toFixed(2) || 'N/A'}
+                </div>
+                <div className="text-sm text-red-600">
+                  70% Volume Lower Bound
+                </div>
+              </div>
+            </div>
+
+            {/* Session Profiles Summary */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3">Recent Session Profiles</h3>
+              <div className="space-y-3">
+                {volumeAnalysis.sessions?.slice(-3).map((session, idx) => (
+                  <div key={idx} className="bg-white p-3 rounded border">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium">
+                        Session {idx + 1} POC: ${session.pocPrice.toFixed(0)}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        Strength: {session.sessionStrength?.toFixed(0) || 0}%
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded-full">
+                      <div 
+                        className="h-2 bg-blue-600 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, session.sessionStrength || 0)}%` }}
+                      />
+                    </div>
+                  </div>
+                )) || <p className="text-gray-500">No session data available</p>}
               </div>
             </div>
           </div>
         )}
 
+        {/* Simplified Levels View */}
         {activeView === 'LEVELS' && volumeAnalysis && (
           <div className="space-y-6">
             <h3 className="text-lg font-semibold">Key Trading Levels</h3>
@@ -534,11 +580,11 @@ const EnhancedDrPaulDashboard = ({
               <div>
                 <h4 className="font-medium text-green-700 mb-3 flex items-center">
                   <TrendingUp className="w-4 h-4 mr-2" />
-                  Support Levels
+                  Volume Support Levels
                 </h4>
-                {volumeAnalysis.keyLevels.support.length > 0 ? (
+                {volumeAnalysis.keyLevels?.support?.length > 0 ? (
                   <div className="space-y-2">
-                    {volumeAnalysis.keyLevels.support.map((level, idx) => (
+                    {volumeAnalysis.keyLevels.support.slice(0, 3).map((level, idx) => (
                       <div key={idx} className="bg-green-50 p-3 rounded-lg border border-green-200">
                         <div className="flex justify-between items-center">
                           <span className="font-bold text-green-900">
@@ -565,11 +611,11 @@ const EnhancedDrPaulDashboard = ({
               <div>
                 <h4 className="font-medium text-red-700 mb-3 flex items-center">
                   <TrendingDown className="w-4 h-4 mr-2" />
-                  Resistance Levels
+                  Volume Resistance Levels
                 </h4>
-                {volumeAnalysis.keyLevels.resistance.length > 0 ? (
+                {volumeAnalysis.keyLevels?.resistance?.length > 0 ? (
                   <div className="space-y-2">
-                    {volumeAnalysis.keyLevels.resistance.map((level, idx) => (
+                    {volumeAnalysis.keyLevels.resistance.slice(0, 3).map((level, idx) => (
                       <div key={idx} className="bg-red-50 p-3 rounded-lg border border-red-200">
                         <div className="flex justify-between items-center">
                           <span className="font-bold text-red-900">
@@ -593,26 +639,24 @@ const EnhancedDrPaulDashboard = ({
               </div>
             </div>
 
-            {/* Volume Gaps (Low Volume Nodes) */}
+            {/* Volume Gaps */}
             <div>
               <h4 className="font-medium text-orange-700 mb-3 flex items-center">
                 <Eye className="w-4 h-4 mr-2" />
-                Volume Gaps (Breakout Zones)
+                Volume Gaps (Potential Breakout Zones)
               </h4>
-              {volumeAnalysis.keyLevels.lvns.length > 0 ? (
+              {volumeAnalysis.keyLevels?.lvns?.length > 0 ? (
                 <div className="grid grid-cols-3 gap-4">
                   {volumeAnalysis.keyLevels.lvns.slice(0, 3).map((level, idx) => (
-                    <div key={idx} className="bg-orange-50 p-3 rounded-lg border border-orange-200">
-                      <div className="text-center">
-                        <div className="font-bold text-orange-900">
-                          ${level.price.toFixed(2)}
-                        </div>
-                        <div className="text-sm text-orange-600">
-                          Low Volume Zone
-                        </div>
-                        <div className="text-xs text-orange-500">
-                          Potential breakout area
-                        </div>
+                    <div key={idx} className="bg-orange-50 p-3 rounded-lg border border-orange-200 text-center">
+                      <div className="font-bold text-orange-900">
+                        ${level.price.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-orange-600">
+                        Low Volume Zone
+                      </div>
+                      <div className="text-xs text-orange-500">
+                        Breakout potential
                       </div>
                     </div>
                   ))}
@@ -624,12 +668,13 @@ const EnhancedDrPaulDashboard = ({
           </div>
         )}
 
+        {/* Enhanced Signals View */}
         {activeView === 'SIGNALS' && (
           <div className="space-y-6">
             <h3 className="text-lg font-semibold">Combined Trading Signals</h3>
             
             {/* Primary Signal */}
-            {combinedSignals.primarySignal && (
+            {combinedSignals.primarySignal ? (
               <div className={`p-4 rounded-lg border-2 ${
                 combinedSignals.primarySignal.direction === 'bullish' 
                   ? 'bg-green-50 border-green-200' 
@@ -649,6 +694,10 @@ const EnhancedDrPaulDashboard = ({
                 </div>
                 
                 <div className="grid grid-cols-3 gap-4 mb-3">
+                  <div>
+                    <div className="text-sm text-gray-600">Current Price</div>
+                    <div className="font-bold">${currentPrice.toFixed(2)}</div>
+                  </div>
                   {combinedSignals.levels.entry && (
                     <div>
                       <div className="text-sm text-gray-600">Entry Level</div>
@@ -659,12 +708,6 @@ const EnhancedDrPaulDashboard = ({
                     <div>
                       <div className="text-sm text-gray-600">Target</div>
                       <div className="font-bold">${combinedSignals.levels.target.toFixed(2)}</div>
-                    </div>
-                  )}
-                  {combinedSignals.levels.stop && (
-                    <div>
-                      <div className="text-sm text-gray-600">Stop Loss</div>
-                      <div className="font-bold">${combinedSignals.levels.stop.toFixed(2)}</div>
                     </div>
                   )}
                 </div>
@@ -678,66 +721,42 @@ const EnhancedDrPaulDashboard = ({
                   </ul>
                 </div>
               </div>
-            )}
-
-            {/* Volume Profile Signals */}
-            {volumeAnalysis?.signals && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Entry Signals */}
-                <div>
-                  <h4 className="font-medium text-green-700 mb-3">Volume Entry Signals</h4>
-                  {volumeAnalysis.signals.entries.length > 0 ? (
-                    <div className="space-y-2">
-                      {volumeAnalysis.signals.entries.map((signal, idx) => (
-                        <div key={idx} className="bg-green-50 p-3 rounded border border-green-200">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-medium">${signal.level.toFixed(2)}</span>
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              signal.strength === 'HIGH' 
-                                ? 'bg-green-200 text-green-800'
-                                : 'bg-yellow-200 text-yellow-800'
-                            }`}>
-                              {signal.strength}
-                            </span>
-                          </div>
-                          <p className="text-sm text-green-700">{signal.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 italic">No volume entry signals</p>
-                  )}
-                </div>
-
-                {/* Exit Signals */}
-                <div>
-                  <h4 className="font-medium text-red-700 mb-3">Volume Exit Signals</h4>
-                  {volumeAnalysis.signals.exits.length > 0 ? (
-                    <div className="space-y-2">
-                      {volumeAnalysis.signals.exits.map((signal, idx) => (
-                        <div key={idx} className="bg-red-50 p-3 rounded border border-red-200">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-medium">${signal.level.toFixed(2)}</span>
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              signal.strength === 'HIGH' 
-                                ? 'bg-red-200 text-red-800'
-                                : 'bg-yellow-200 text-yellow-800'
-                            }`}>
-                              {signal.strength}
-                            </span>
-                          </div>
-                          <p className="text-sm text-red-700">{signal.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 italic">No volume exit signals</p>
-                  )}
+            ) : (
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <p className="text-gray-600">No primary signals detected. Monitoring market conditions...</p>
+                <div className="mt-2 text-sm text-gray-500">
+                  Dr. Paul Score: {enhancedSignals?.overallScore || 0}% • 
+                  Volume Quality: {volumeAnalysis?.signals?.levelStrength || 0}%
                 </div>
               </div>
             )}
 
-            {/* Trade Button */}
+            {/* Volume Profile Signals Summary */}
+            {volumeAnalysis?.signals && (
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-green-700 mb-3">Volume Entry Signals</h4>
+                  <div className="text-2xl font-bold text-green-900">
+                    {volumeAnalysis.signals.entries?.length || 0}
+                  </div>
+                  <div className="text-sm text-green-600">
+                    Active level-to-level entries
+                  </div>
+                </div>
+                
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-red-700 mb-3">Volume Exit Signals</h4>
+                  <div className="text-2xl font-bold text-red-900">
+                    {volumeAnalysis.signals.exits?.length || 0}
+                  </div>
+                  <div className="text-sm text-red-600">
+                    Active resistance warnings
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Trade Execution Button */}
             {combinedSignals.primarySignal && combinedSignals.confidence > 50 && onTradeSignal && (
               <div className="text-center">
                 <button
@@ -751,6 +770,9 @@ const EnhancedDrPaulDashboard = ({
                   Execute {combinedSignals.primarySignal.direction.toUpperCase()} Trade
                   ({combinedSignals.confidence.toFixed(0)}% confidence)
                 </button>
+                <p className="text-xs text-gray-500 mt-2">
+                  Combined Dr. Paul + Volume Profile analysis
+                </p>
               </div>
             )}
           </div>
@@ -771,7 +793,10 @@ const EnhancedDrPaulDashboard = ({
               Auto-Update: {volumeProfileSettings.autoUpdate ? 'ON' : 'OFF'}
             </div>
             <div>
-              Range: {volumeProfileSettings.vpvrRange} candles
+              VPVR Range: {volumeProfileSettings.vpvrRange} candles
+            </div>
+            <div>
+              Status: {connectionStatus}
             </div>
           </div>
         </div>
